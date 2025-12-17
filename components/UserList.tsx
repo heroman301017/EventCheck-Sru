@@ -5,12 +5,14 @@ import { QRCodeSVG } from 'qrcode.react';
 
 interface UserListProps {
   users: User[];
+  isEditable: boolean;
   onAddUser: (name: string, phone: string) => void;
   onUpdateUser: (user: User) => void;
   onImportUsers: (users: { name: string; phone: string }[]) => void;
+  onExportUsers: () => void;
 }
 
-export const UserList: React.FC<UserListProps> = ({ users, onAddUser, onUpdateUser, onImportUsers }) => {
+export const UserList: React.FC<UserListProps> = ({ users, isEditable, onAddUser, onUpdateUser, onImportUsers, onExportUsers }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'checked-in' | 'pending'>('all');
   const [selectedQr, setSelectedQr] = useState<User | null>(null);
@@ -29,23 +31,6 @@ export const UserList: React.FC<UserListProps> = ({ users, onAddUser, onUpdateUs
     return matchesSearch && matchesFilter;
   });
 
-  const exportCSV = () => {
-    const bom = "\uFEFF"; 
-    const headers = "ลำดับ,ชื่อ-สกุล,เบอร์โทรศัพท์,สถานะ,เวลาที่ลงทะเบียน\n";
-    const rows = filteredUsers.map(u => 
-      `${u.id},"${u.name}",'${u.phone},${u.status === 'checked-in' ? 'มาแล้ว' : 'ยังไม่มา'},${u.checkInTime || '-'}`
-    ).join("\n");
-    
-    const blob = new Blob([bom + headers + rows], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `registration_report_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -55,9 +40,6 @@ export const UserList: React.FC<UserListProps> = ({ users, onAddUser, onUpdateUs
       const text = event.target?.result as string;
       const rows = text.split('\n').filter(row => row.trim() !== '');
       const parsedUsers: { name: string; phone: string }[] = [];
-      
-      // Assume CSV format: Name,Phone (Header optional logic could be added)
-      // Skipping header if it exists and looks like header
       const startIdx = rows[0].includes('name') || rows[0].includes('ชื่อ') ? 1 : 0;
 
       for (let i = startIdx; i < rows.length; i++) {
@@ -77,7 +59,6 @@ export const UserList: React.FC<UserListProps> = ({ users, onAddUser, onUpdateUs
         alert('No valid data found in CSV.');
       }
       
-      // Reset input
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsText(file);
@@ -133,36 +114,40 @@ export const UserList: React.FC<UserListProps> = ({ users, onAddUser, onUpdateUs
 
           <div className="h-8 w-px bg-gray-300 mx-2 hidden xl:block"></div>
           
-          <button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            <span>เพิ่มรายชื่อ</span>
-          </button>
+          {isEditable && (
+            <>
+              <button 
+                onClick={() => setIsAddModalOpen(true)}
+                className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span>เพิ่มรายชื่อ</span>
+              </button>
 
-          <input 
-            type="file" 
-            accept=".csv,.txt" 
-            ref={fileInputRef} 
-            onChange={handleFileUpload} 
-            className="hidden" 
-          />
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium transition-colors"
-          >
-            <Upload className="w-4 h-4" />
-            <span>Import CSV</span>
-          </button>
-          
-          <button 
-            onClick={exportCSV}
-            className="flex items-center gap-2 px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            <span>Export</span>
-          </button>
+              <input 
+                type="file" 
+                accept=".csv,.txt" 
+                ref={fileInputRef} 
+                onChange={handleFileUpload} 
+                className="hidden" 
+              />
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Import CSV</span>
+              </button>
+              
+              <button 
+                onClick={onExportUsers}
+                className="flex items-center gap-2 px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                <span>Export Report</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -177,7 +162,7 @@ export const UserList: React.FC<UserListProps> = ({ users, onAddUser, onUpdateUs
               <th className="p-4 font-semibold border-b text-center">QR</th>
               <th className="p-4 font-semibold border-b text-center">สถานะ</th>
               <th className="p-4 font-semibold border-b text-right">เวลา</th>
-              <th className="p-4 font-semibold border-b text-center">แก้ไข</th>
+              {isEditable && <th className="p-4 font-semibold border-b text-center">แก้ไข</th>}
             </tr>
           </thead>
           <tbody className="text-gray-700 text-sm">
@@ -210,20 +195,22 @@ export const UserList: React.FC<UserListProps> = ({ users, onAddUser, onUpdateUs
                   <td className="p-4 text-right text-gray-500">
                     {user.checkInTime || '-'}
                   </td>
-                  <td className="p-4 text-center">
-                    <button 
-                      onClick={() => { setEditingUser(user); setIsEditModalOpen(true); }}
-                      className="text-gray-400 hover:text-amber-500 transition-colors"
-                      title="Edit User"
-                    >
-                      <Edit2 className="w-4 h-4 mx-auto" />
-                    </button>
-                  </td>
+                  {isEditable && (
+                    <td className="p-4 text-center">
+                      <button 
+                        onClick={() => { setEditingUser(user); setIsEditModalOpen(true); }}
+                        className="text-gray-400 hover:text-amber-500 transition-colors"
+                        title="Edit User"
+                      >
+                        <Edit2 className="w-4 h-4 mx-auto" />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-gray-500">
+                <td colSpan={isEditable ? 7 : 6} className="p-8 text-center text-gray-500">
                   ไม่พบข้อมูล
                 </td>
               </tr>

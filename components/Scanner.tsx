@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
-import { ScanLine, CheckCircle, XCircle, Search, Download, Image as ImageIcon } from 'lucide-react';
+import { ScanLine, CheckCircle, XCircle, Search, Download, ArrowRight, RefreshCw } from 'lucide-react';
 import { toPng } from 'html-to-image';
 
 interface ScannerProps {
@@ -28,13 +28,12 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan }) => {
   // Handle Auto Save Proof
   useEffect(() => {
     if (lastScanResult.status === 'success' && lastScanResult.user && autoSave && proofRef.current) {
-      // Small delay to ensure rendering is complete
       const timer = setTimeout(() => {
         handleSaveProof(lastScanResult.user!);
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [lastScanResult]);
+  }, [lastScanResult, autoSave]);
 
   const handleSaveProof = async (user: User) => {
     if (!proofRef.current) return;
@@ -47,6 +46,12 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan }) => {
     } catch (err) {
       console.error('Failed to save proof image', err);
     }
+  };
+
+  const handleReset = () => {
+    setLastScanResult({ status: 'idle', message: '' });
+    setInput('');
+    // Focus will be handled by the useEffect
   };
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -64,6 +69,7 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan }) => {
           message: 'ลงทะเบียนไปแล้ว (Already Checked In)', 
           user 
         });
+        // Errors auto-reset after 3 seconds to keep flow moving if it's just a duplicate scan
         setTimeout(() => setLastScanResult({ status: 'idle', message: '' }), 3000);
       } else {
         onScan(normalizedInput);
@@ -72,8 +78,7 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan }) => {
           message: 'ลงทะเบียนสำเร็จ (Success)', 
           user 
         });
-        // Reset result after 4 seconds (giving time to save)
-        setTimeout(() => setLastScanResult({ status: 'idle', message: '' }), 4000);
+        // REMOVED auto-reset timeout here. User must click "Next"
       }
     } else {
       setLastScanResult({ status: 'error', message: 'ไม่พบข้อมูลในระบบ (User Not Found)' });
@@ -111,14 +116,25 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan }) => {
         )}
 
         {lastScanResult.status === 'success' && (
-          <div className="absolute inset-0 bg-emerald-600 flex flex-col items-center justify-center text-white animate-in zoom-in duration-300">
-            <CheckCircle className="w-24 h-24 mb-4" />
-            <h2 className="text-2xl font-bold">{lastScanResult.user?.name}</h2>
+          <div className="absolute inset-0 bg-emerald-600 flex flex-col items-center justify-center text-white animate-in zoom-in duration-300 z-10 p-6 text-center">
+            <CheckCircle className="w-20 h-20 mb-4" />
+            <h2 className="text-2xl font-bold break-words w-full">{lastScanResult.user?.name}</h2>
             <p className="opacity-90 mt-2 text-lg">เบอร์โทร: {lastScanResult.user?.phone}</p>
-            <div className="flex gap-2 mt-4">
-              <span className="font-bold bg-white text-emerald-700 px-4 py-1 rounded-full">{lastScanResult.message}</span>
+            
+            <div className="mt-6 flex flex-col gap-3 w-full max-w-xs">
+               <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                 <p className="font-bold text-white">{lastScanResult.message}</p>
+                 {autoSave && <p className="text-xs mt-1 opacity-75 flex items-center justify-center gap-1"><Download className="w-3 h-3" /> Saved to device</p>}
+               </div>
+               
+               <button 
+                 onClick={handleReset}
+                 className="bg-white text-emerald-700 hover:bg-gray-100 font-bold py-3 px-6 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95"
+               >
+                 <span>สแกนคนถัดไป</span>
+                 <ArrowRight className="w-5 h-5" />
+               </button>
             </div>
-            {autoSave && <p className="text-xs mt-2 opacity-75 flex items-center gap-1"><Download className="w-3 h-3" /> Saving proof...</p>}
           </div>
         )}
 
@@ -126,34 +142,37 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan }) => {
           <div className="absolute inset-0 bg-red-600 flex flex-col items-center justify-center text-white animate-in zoom-in duration-300">
             <XCircle className="w-24 h-24 mb-4" />
             <h2 className="text-2xl font-bold">{lastScanResult.message}</h2>
-            {lastScanResult.user && <p className="mt-2">{lastScanResult.user.name}</p>}
+            {lastScanResult.user && <p className="mt-2 text-lg">{lastScanResult.user.name}</p>}
+            <p className="mt-4 text-sm opacity-75">Auto-resetting in 3s...</p>
           </div>
         )}
       </div>
 
-      {/* Input Form */}
-      <form onSubmit={handleSubmit} className="w-full max-w-md">
-        <div className="relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search className="h-5 w-5 text-gray-400" />
+      {/* Input Form - Hide when success to prevent accidental double scans while viewing result */}
+      {lastScanResult.status !== 'success' && (
+        <form onSubmit={handleSubmit} className="w-full max-w-md">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-5 w-5 text-gray-400" />
+            </div>
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              className="block w-full pl-10 pr-4 py-4 border-2 border-gray-200 rounded-xl text-lg focus:ring-blue-500 focus:border-blue-500 shadow-sm transition-colors"
+              placeholder="สแกน QR Code หรือกรอกเบอร์โทร..."
+              autoComplete="off"
+            />
+            <button 
+              type="submit"
+              className="absolute inset-y-2 right-2 px-6 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+            >
+              ตรวจสอบ
+            </button>
           </div>
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            className="block w-full pl-10 pr-4 py-4 border-2 border-gray-200 rounded-xl text-lg focus:ring-blue-500 focus:border-blue-500 shadow-sm transition-colors"
-            placeholder="สแกน QR Code หรือกรอกเบอร์โทร..."
-            autoComplete="off"
-          />
-          <button 
-            type="submit"
-            className="absolute inset-y-2 right-2 px-6 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
-          >
-            ตรวจสอบ
-          </button>
-        </div>
-      </form>
+        </form>
+      )}
 
       {/* Hidden Proof Card for Image Generation */}
       {lastScanResult.status === 'success' && lastScanResult.user && (
