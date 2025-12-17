@@ -108,6 +108,7 @@ const App: React.FC = () => {
 
       // Header
       doc.setFontSize(20);
+      doc.setTextColor(100, 100, 100);
       doc.text("รายงานการลงทะเบียน (Registration Report)", 105, 15, { align: 'center' });
       doc.setFontSize(14);
       doc.text(`วันที่: ${new Date().toLocaleDateString('th-TH')}`, 105, 22, { align: 'center' });
@@ -138,8 +139,9 @@ const App: React.FC = () => {
         head: [tableColumn],
         body: tableRows,
         startY: 35,
-        styles: { font: fontName, fontSize: 12 },
-        headStyles: { fillColor: [59, 130, 246] }, // Blue Header
+        styles: { font: fontName, fontSize: 12, cellPadding: 2 },
+        headStyles: { fillColor: [139, 92, 246] }, // Violet-500 Header
+        alternateRowStyles: { fillColor: [245, 243, 255] }, // Very light violet for alternate rows
         theme: 'grid'
       });
 
@@ -206,21 +208,21 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50/50">
+    <div className="min-h-[100dvh] flex flex-col bg-slate-50 font-sans overflow-hidden">
       {/* Header */}
-      <header className="bg-white shadow-sm sticky top-0 z-40">
+      <header className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-40 border-b border-violet-100 shrink-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-blue-600 p-2 rounded-lg">
+          <div className="flex items-center gap-3">
+            <div className="bg-gradient-to-tr from-violet-500 to-fuchsia-500 p-2 rounded-xl shadow-md shadow-violet-200">
               <QrCode className="w-6 h-6 text-white" />
             </div>
-            <h1 className="text-xl font-bold text-gray-800 tracking-tight">
-              Event<span className="text-blue-600">Check</span>
+            <h1 className="text-xl font-bold text-slate-700 tracking-tight hidden sm:block">
+              Event<span className="text-violet-500">Check</span>
             </h1>
           </div>
           
           <div className="flex items-center gap-3">
-            <nav className="flex space-x-1 bg-gray-100 p-1 rounded-xl">
+            <nav className="flex space-x-1 bg-slate-100 p-1 rounded-2xl">
               {[
                 { id: 'scan', icon: ScanLine, label: 'จุดสแกน' },
                 { id: 'overview', icon: LayoutDashboard, label: 'ข้อมูล' },
@@ -229,10 +231,10 @@ const App: React.FC = () => {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
                   className={`
-                    flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
+                    flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300
                     ${activeTab === tab.id 
-                      ? 'bg-white text-blue-600 shadow-sm' 
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'}
+                      ? 'bg-white text-violet-600 shadow-sm' 
+                      : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}
                   `}
                 >
                   <tab.icon className="w-4 h-4" />
@@ -241,11 +243,11 @@ const App: React.FC = () => {
               ))}
             </nav>
 
-            <div className="h-6 w-px bg-gray-200 mx-1"></div>
+            <div className="h-6 w-px bg-slate-200 mx-1"></div>
 
             <button 
               onClick={() => isAdmin ? setIsAdmin(false) : setShowLogin(true)}
-              className={`p-2 rounded-full transition-colors ${isAdmin ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
+              className={`p-2 rounded-full transition-all duration-300 ${isAdmin ? 'bg-amber-100 text-amber-500 ring-2 ring-amber-200' : 'bg-slate-100 text-slate-400 hover:bg-violet-100 hover:text-violet-500'}`}
               title={isAdmin ? "Exit Developer Mode" : "Enter Developer Mode"}
             >
               {isAdmin ? <Unlock className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
@@ -255,25 +257,25 @@ const App: React.FC = () => {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8 w-full pb-20">
+      <main className={`flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-8 overflow-y-auto ${activeTab === 'scan' ? 'flex flex-col justify-center' : ''}`}>
         {activeTab === 'overview' && (
-          <div className="space-y-8 animate-fade-in">
+          <div className="space-y-8 animate-fade-in pb-20">
             
             {/* Session & Admin Controls - HIDDEN UNLESS ADMIN */}
             {isAdmin && (
-              <div className="bg-white rounded-xl shadow-sm p-4 border border-amber-200 bg-amber-50 flex flex-col md:flex-row justify-between items-center gap-4 animate-in fade-in slide-in-from-top-4">
+              <div className="bg-white rounded-2xl shadow-sm p-4 border border-rose-100 bg-rose-50/50 flex flex-col md:flex-row justify-between items-center gap-4 animate-in fade-in slide-in-from-top-4">
                  <div>
-                   <h2 className="font-bold text-amber-800 flex items-center gap-2">
+                   <h2 className="font-bold text-rose-800 flex items-center gap-2">
                      <ShieldCheck className="w-5 h-5" />
                      Developer Control Panel
                    </h2>
-                   <p className="text-sm text-amber-700 mt-1">จัดการรอบการลงทะเบียน ล้างข้อมูล และแก้ไขรายชื่อ</p>
+                   <p className="text-sm text-rose-600 mt-1">จัดการรอบการลงทะเบียน ล้างข้อมูล และแก้ไขรายชื่อ</p>
                  </div>
                  
                  <div className="flex flex-wrap gap-2">
                    <button
                      onClick={handleResetSession}
-                     className="flex items-center gap-2 px-4 py-2 bg-white text-blue-700 border border-blue-200 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors shadow-sm"
+                     className="flex items-center gap-2 px-4 py-2 bg-white text-violet-600 border border-violet-200 rounded-xl text-sm font-medium hover:bg-violet-50 transition-colors shadow-sm"
                    >
                      <RefreshCw className="w-4 h-4" />
                      จบรอบ & เริ่มใหม่
@@ -281,7 +283,7 @@ const App: React.FC = () => {
                    
                    <button
                      onClick={handleClearAll}
-                     className="flex items-center gap-2 px-4 py-2 bg-white text-red-700 border border-red-200 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors shadow-sm"
+                     className="flex items-center gap-2 px-4 py-2 bg-white text-rose-600 border border-rose-200 rounded-xl text-sm font-medium hover:bg-rose-50 transition-colors shadow-sm"
                    >
                      <Trash2 className="w-4 h-4" />
                      ล้างข้อมูลทั้งหมด
@@ -311,25 +313,28 @@ const App: React.FC = () => {
         )}
 
         {activeTab === 'scan' && (
-          <div className="space-y-6 animate-fade-in">
-            <header className="text-center mb-4 md:mb-8">
-              <h2 className="text-2xl md:text-3xl font-bold text-gray-800">จุดลงทะเบียน</h2>
-              <p className="text-gray-500 mt-2 text-sm md:text-base">
-                สแกนครั้งแรกเพื่อ <span className="text-emerald-600 font-bold">ลงทะเบียนเข้า</span> / สแกนซ้ำเพื่อ <span className="text-amber-600 font-bold">ลงทะเบียนออก</span>
+          <div className="w-full flex flex-col items-center justify-center animate-fade-in h-full">
+            <header className="text-center mb-6 shrink-0">
+              <div className="inline-block px-4 py-1 bg-violet-100 text-violet-600 rounded-full text-xs font-semibold mb-2 tracking-wide uppercase">Real-time Check-in</div>
+              <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-2">จุดลงทะเบียน</h2>
+              <p className="text-slate-500 text-sm md:text-base">
+                สแกนครั้งแรก <span className="text-emerald-500 font-bold">เข้างาน</span> / สแกนซ้ำ <span className="text-slate-500 font-bold">กลับบ้าน</span>
               </p>
             </header>
-            <Scanner users={users} onScan={handleCheckIn} />
+            <div className="w-full flex-1 flex items-center justify-center min-h-0">
+               <Scanner users={users} onScan={handleCheckIn} />
+            </div>
           </div>
         )}
       </main>
 
       {/* Admin Login Modal */}
       {showLogin && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-xs w-full shadow-2xl animate-in zoom-in-95 duration-200">
-             <div className="flex justify-between items-center mb-4">
-                <h3 className="font-bold text-lg">Developer Access</h3>
-                <button onClick={() => setShowLogin(false)}><X className="w-5 h-5 text-gray-400" /></button>
+        <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-xs w-full shadow-2xl shadow-violet-200 animate-in zoom-in-95 duration-200">
+             <div className="flex justify-between items-center mb-6">
+                <h3 className="font-bold text-xl text-slate-800">Developer Access</h3>
+                <button onClick={() => setShowLogin(false)} className="bg-slate-100 p-1 rounded-full hover:bg-slate-200"><X className="w-5 h-5 text-slate-500" /></button>
              </div>
              <form onSubmit={handleLogin} className="space-y-4">
                <div>
@@ -338,12 +343,12 @@ const App: React.FC = () => {
                    type="password" 
                    value={password}
                    onChange={(e) => setPassword(e.target.value)}
-                   className="w-full px-4 py-2 border rounded-lg text-center font-mono text-lg tracking-widest focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                   className="w-full px-4 py-3 border border-slate-200 rounded-xl text-center font-mono text-lg tracking-widest focus:ring-4 focus:ring-violet-100 focus:border-violet-500 outline-none transition-all"
                    placeholder="Enter PIN"
                    autoComplete="off"
                  />
                </div>
-               <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">
+               <button type="submit" className="w-full bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white py-3 rounded-xl font-bold shadow-lg shadow-violet-200 hover:shadow-violet-300 transition-all active:scale-95">
                  Unlock
                </button>
              </form>
@@ -351,10 +356,10 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Footer */}
-      <footer className="bg-white border-t py-6 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 text-center text-sm text-gray-400">
-          &copy; {new Date().getFullYear()} EventCheck Registration System. All rights reserved.
+      {/* Footer - Minimal on Scan tab */}
+      <footer className={`bg-white border-t border-slate-100 py-4 shrink-0 ${activeTab === 'scan' ? 'hidden md:block' : 'mt-auto'}`}>
+        <div className="max-w-7xl mx-auto px-4 text-center text-sm text-slate-400">
+          Made with 💜 for Students &middot; &copy; {new Date().getFullYear()} EventCheck
         </div>
       </footer>
     </div>

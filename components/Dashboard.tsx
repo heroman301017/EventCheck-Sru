@@ -7,18 +7,20 @@ interface DashboardProps {
   stats: Stats;
 }
 
-const COLORS = ['#10B981', '#6B7280', '#F59E0B']; // Green, Gray, Amber
+// Pastel Colors
+const COLORS = ['#34D399', '#94A3B8', '#FBBF24']; // Emerald-400, Slate-400, Amber-400
+// const COLORS = ['#A78BFA', '#F472B6', '#34D399', '#FBBF24']; // Violet, Pink, Emerald, Amber
 
-const StatCard: React.FC<{ title: string; value: number; icon: React.ReactNode; color: string; sub?: string }> = ({ title, value, icon, color, sub }) => (
-  <div className={`bg-white rounded-xl shadow-md p-6 border-l-4 ${color} flex items-center justify-between`}>
+const StatCard: React.FC<{ title: string; value: number; icon: React.ReactNode; colorClass: string; sub?: string }> = ({ title, value, icon, colorClass, sub }) => (
+  <div className={`bg-white rounded-2xl shadow-sm p-6 border-b-4 ${colorClass} flex items-center justify-between transition-transform hover:-translate-y-1 duration-300`}>
     <div>
-      <p className="text-gray-500 text-sm font-medium uppercase tracking-wider">{title}</p>
+      <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">{title}</p>
       <div className="flex items-baseline gap-2">
-        <h3 className="text-3xl font-bold text-gray-800 mt-2">{value}</h3>
-        {sub && <span className="text-sm text-gray-400 font-medium">{sub}</span>}
+        <h3 className="text-3xl font-bold text-slate-700 mt-2">{value}</h3>
+        {sub && <span className="text-sm text-slate-400 font-medium">{sub}</span>}
       </div>
     </div>
-    <div className={`p-4 rounded-full bg-opacity-10 ${color.replace('border-', 'bg-')}`}>
+    <div className={`p-4 rounded-2xl ${colorClass.replace('border-', 'bg-').replace('-400', '-100').replace('-500', '-100')} ${colorClass.replace('border-', 'text-')}`}>
       {icon}
     </div>
   </div>
@@ -37,33 +39,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats }) => {
         <StatCard 
           title="ยอดรวมทั้งหมด" 
           value={stats.total} 
-          icon={<Users className="w-8 h-8 text-blue-600" />} 
-          color="border-blue-600" 
+          icon={<Users className="w-7 h-7" />} 
+          colorClass="border-violet-400" 
         />
         <StatCard 
           title="อยู่ในงาน" 
           value={stats.present} 
-          icon={<UserCheck className="w-8 h-8 text-emerald-500" />} 
-          color="border-emerald-500" 
+          icon={<UserCheck className="w-7 h-7" />} 
+          colorClass="border-emerald-400" 
         />
         <StatCard 
           title="กลับบ้านแล้ว" 
           value={stats.returned} 
-          icon={<LogOut className="w-8 h-8 text-gray-500" />} 
-          color="border-gray-500" 
+          icon={<LogOut className="w-7 h-7" />} 
+          colorClass="border-slate-400" 
         />
         <StatCard 
           title="ยังไม่ลงทะเบียน" 
           value={stats.pending} 
-          icon={<UserX className="w-8 h-8 text-amber-500" />} 
-          color="border-amber-500" 
+          icon={<UserX className="w-7 h-7" />} 
+          colorClass="border-amber-400" 
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Pie Chart */}
-        <div className="bg-white p-6 rounded-xl shadow-md">
-          <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">สัดส่วนสถานะปัจจุบัน</h3>
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+          <h3 className="text-lg font-bold text-slate-700 mb-6 flex items-center gap-2">
+            <div className="w-2 h-6 bg-violet-400 rounded-full"></div>
+            สัดส่วนสถานะปัจจุบัน
+          </h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -78,12 +83,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats }) => {
                   dataKey="value"
                 >
                   {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
                   ))}
                 </Pie>
                 <Tooltip 
                    formatter={(value: number) => [`${value} คน`, 'จำนวน']}
-                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', fontFamily: 'Sarabun' }}
+                   itemStyle={{ color: '#64748b' }}
                 />
                 <Legend verticalAlign="bottom" height={36} iconType="circle" />
               </PieChart>
@@ -92,16 +98,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats }) => {
         </div>
 
         {/* Bar Chart */}
-         <div className="bg-white p-6 rounded-xl shadow-md">
-          <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">ความคืบหน้าการเข้าร่วม</h3>
+         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+          <h3 className="text-lg font-bold text-slate-700 mb-6 flex items-center gap-2">
+            <div className="w-2 h-6 bg-rose-400 rounded-full"></div>
+            ความคืบหน้าการเข้าร่วม
+          </h3>
           <div className="h-64 flex items-center justify-center">
              <ResponsiveContainer width="100%" height="100%">
-               <BarChart data={pieData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+               <BarChart data={pieData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                   <XAxis type="number" hide />
-                  <YAxis dataKey="name" type="category" width={150} style={{ fontSize: '12px', fontWeight: 500 }} />
-                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '8px' }} />
-                  <Bar dataKey="value" barSize={30} radius={[0, 4, 4, 0]}>
+                  <YAxis dataKey="name" type="category" width={120} style={{ fontSize: '12px', fontWeight: 500, fill: '#64748b' }} tickLine={false} axisLine={false} />
+                  <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', fontFamily: 'Sarabun' }} />
+                  <Bar dataKey="value" barSize={24} radius={[0, 12, 12, 0]}>
                     {pieData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
