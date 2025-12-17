@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { User, Stats } from './types';
 import { INITIAL_USERS, normalizePhone } from './constants';
 import { Dashboard } from './components/Dashboard';
@@ -14,6 +14,16 @@ const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [password, setPassword] = useState('');
+  const loginInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto focus on login input when modal opens
+  useEffect(() => {
+    if (showLogin) {
+      setTimeout(() => {
+        loginInputRef.current?.focus();
+      }, 50);
+    }
+  }, [showLogin]);
 
   // Calculate Statistics
   const stats: Stats = useMemo(() => {
@@ -162,7 +172,7 @@ const App: React.FC = () => {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8 w-full pb-20">
         {activeTab === 'overview' && (
           <div className="space-y-8 animate-fade-in">
             
@@ -218,9 +228,9 @@ const App: React.FC = () => {
 
         {activeTab === 'scan' && (
           <div className="space-y-6 animate-fade-in">
-            <header className="text-center mb-8">
-              <h2 className="text-3xl font-bold text-gray-800">จุดลงทะเบียน</h2>
-              <p className="text-gray-500 mt-2">กรุณาสแกน QR Code เพื่อบันทึกเวลา</p>
+            <header className="text-center mb-4 md:mb-8">
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-800">จุดลงทะเบียน</h2>
+              <p className="text-gray-500 mt-2 text-sm md:text-base">กรุณาสแกน QR Code เพื่อบันทึกเวลา</p>
             </header>
             <Scanner users={users} onScan={handleCheckIn} />
           </div>
@@ -238,12 +248,13 @@ const App: React.FC = () => {
              <form onSubmit={handleLogin} className="space-y-4">
                <div>
                  <input 
+                   ref={loginInputRef}
                    type="password" 
                    value={password}
                    onChange={(e) => setPassword(e.target.value)}
                    className="w-full px-4 py-2 border rounded-lg text-center font-mono text-lg tracking-widest focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                    placeholder="Enter PIN"
-                   autoFocus
+                   autoComplete="off"
                  />
                </div>
                <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">
