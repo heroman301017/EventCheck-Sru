@@ -82,6 +82,13 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onAddUser
     }
   };
 
+  // Helper to mask phone number
+  const formatPhoneNumber = (phone: string) => {
+    if (isEditable) return phone; // Show full number in Admin Mode
+    if (phone.length < 4) return phone;
+    return phone.slice(0, -4) + 'XXXX';
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-md overflow-hidden animate-fade-in relative">
       {/* Header / Toolbar */}
@@ -167,47 +174,61 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onAddUser
           </thead>
           <tbody className="text-gray-700 text-sm">
             {filteredUsers.length > 0 ? (
-              filteredUsers.map((user) => (
-                <tr key={user.id} className="border-b hover:bg-gray-50 transition-colors">
-                  <td className="p-4 font-medium text-gray-500">{user.id}</td>
-                  <td className="p-4 font-medium">{user.name}</td>
-                  <td className="p-4 font-mono text-gray-600">{user.phone}</td>
-                  <td className="p-4 text-center">
-                    <button 
-                      onClick={() => setSelectedQr(user)}
-                      className="text-gray-400 hover:text-blue-600 transition-colors"
-                      title="Show QR"
-                    >
-                      <QrCode className="w-5 h-5 mx-auto" />
-                    </button>
-                  </td>
-                  <td className="p-4 text-center">
-                    {user.status === 'checked-in' ? (
-                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-                        <Check className="w-3 h-3" /> มาแล้ว
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
-                        <Clock className="w-3 h-3" /> รอ
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-4 text-right text-gray-500">
-                    {user.checkInTime || '-'}
-                  </td>
-                  {isEditable && (
+              filteredUsers.map((user) => {
+                const isCheckedIn = user.status === 'checked-in';
+                return (
+                  <tr 
+                    key={user.id} 
+                    className={`
+                      border-b transition-colors
+                      ${isCheckedIn 
+                        ? 'bg-green-100 hover:bg-green-200 border-green-200 text-green-900' // Green Strip for Checked In
+                        : 'hover:bg-gray-50 border-gray-100 text-gray-700' // Default White
+                      }
+                    `}
+                  >
+                    <td className={`p-4 font-medium ${isCheckedIn ? 'text-green-800' : 'text-gray-500'}`}>{user.id}</td>
+                    <td className="p-4 font-medium">{user.name}</td>
+                    <td className={`p-4 font-mono ${isCheckedIn ? 'text-green-800' : 'text-gray-600'}`}>
+                      {formatPhoneNumber(user.phone)}
+                    </td>
                     <td className="p-4 text-center">
                       <button 
-                        onClick={() => { setEditingUser(user); setIsEditModalOpen(true); }}
-                        className="text-gray-400 hover:text-amber-500 transition-colors"
-                        title="Edit User"
+                        onClick={() => setSelectedQr(user)}
+                        className={`${isCheckedIn ? 'text-green-600 hover:text-green-800' : 'text-gray-400 hover:text-blue-600'} transition-colors`}
+                        title="Show QR"
                       >
-                        <Edit2 className="w-4 h-4 mx-auto" />
+                        <QrCode className="w-5 h-5 mx-auto" />
                       </button>
                     </td>
-                  )}
-                </tr>
-              ))
+                    <td className="p-4 text-center">
+                      {isCheckedIn ? (
+                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/50 text-green-800 border border-green-200">
+                          <Check className="w-3 h-3" /> มาแล้ว
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
+                          <Clock className="w-3 h-3" /> รอ
+                        </span>
+                      )}
+                    </td>
+                    <td className={`p-4 text-right ${isCheckedIn ? 'text-green-800 font-medium' : 'text-gray-500'}`}>
+                      {user.checkInTime || '-'}
+                    </td>
+                    {isEditable && (
+                      <td className="p-4 text-center">
+                        <button 
+                          onClick={() => { setEditingUser(user); setIsEditModalOpen(true); }}
+                          className={`${isCheckedIn ? 'text-green-600 hover:text-green-800' : 'text-gray-400 hover:text-amber-500'} transition-colors`}
+                          title="Edit User"
+                        >
+                          <Edit2 className="w-4 h-4 mx-auto" />
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })
             ) : (
               <tr>
                 <td colSpan={isEditable ? 7 : 6} className="p-8 text-center text-gray-500">
@@ -224,7 +245,9 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onAddUser
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedQr(null)}>
           <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <h3 className="text-xl font-bold mb-2">{selectedQr.name}</h3>
-            <p className="text-gray-500 mb-6 font-mono">{selectedQr.phone}</p>
+            <p className="text-gray-500 mb-6 font-mono">
+               {formatPhoneNumber(selectedQr.phone)}
+            </p>
             <div className="flex justify-center mb-6 p-4 bg-white border-2 border-gray-100 rounded-xl">
                <QRCodeSVG value={selectedQr.phone} size={200} level="H" />
             </div>
