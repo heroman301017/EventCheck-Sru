@@ -5,6 +5,8 @@ import { Dashboard } from './components/Dashboard';
 import { UserList } from './components/UserList';
 import { Scanner } from './components/Scanner';
 import { LayoutDashboard, ScanLine, QrCode, Lock, Unlock, RefreshCw, Trash2, ShieldCheck, X } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'scan'>('scan');
@@ -28,22 +30,34 @@ const App: React.FC = () => {
   // Calculate Statistics
   const stats: Stats = useMemo(() => {
     const total = users.length;
-    const checkedIn = users.filter(u => u.status === 'checked-in').length;
+    const present = users.filter(u => u.status === 'checked-in').length;
+    const returned = users.filter(u => u.status === 'checked-out').length;
+    const checkedIn = present + returned; // Total who have arrived at some point
     const pending = total - checkedIn;
     const percentage = total > 0 ? (checkedIn / total) * 100 : 0;
-    return { total, checkedIn, pending, percentage };
+    return { total, checkedIn, present, returned, pending, percentage };
   }, [users]);
 
-  // Handle Scan Logic
+  // Handle Scan Logic (Toggle Check-in / Check-out)
   const handleCheckIn = (scannedValue: string) => {
     setUsers(prevUsers => 
       prevUsers.map(user => {
-        if (user.phone === scannedValue && user.status === 'pending') {
-          return {
-            ...user,
-            status: 'checked-in',
-            checkInTime: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-          };
+        if (user.phone === scannedValue) {
+          const now = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          
+          if (user.status === 'pending') {
+            return {
+              ...user,
+              status: 'checked-in',
+              checkInTime: now
+            };
+          } else if (user.status === 'checked-in') {
+            return {
+              ...user,
+              status: 'checked-out',
+              checkOutTime: now
+            };
+          }
         }
         return user;
       })
@@ -53,10 +67,14 @@ const App: React.FC = () => {
   // Helper: Export CSV
   const exportCSV = () => {
     const bom = "\uFEFF"; 
-    const headers = "ลำดับ,ชื่อ-สกุล,เบอร์โทรศัพท์,สถานะ,เวลาที่ลงทะเบียน\n";
-    const rows = users.map(u => 
-      `${u.id},"${u.name}",'${u.phone},${u.status === 'checked-in' ? 'มาแล้ว' : 'ยังไม่มา'},${u.checkInTime || '-'}`
-    ).join("\n");
+    const headers = "ลำดับ,ชื่อ-สกุล,เบอร์โทรศัพท์,สถานะ,เวลาเข้า,เวลาออก\n";
+    const rows = users.map(u => {
+      let statusText = 'ยังไม่มา';
+      if (u.status === 'checked-in') statusText = 'อยู่ในงาน';
+      if (u.status === 'checked-out') statusText = 'กลับแล้ว';
+      
+      return `${u.id},"${u.name}",'${u.phone},${statusText},${u.checkInTime || '-'},${u.checkOutTime || '-'}`;
+    }).join("\n");
     
     const blob = new Blob([bom + headers + rows], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -68,11 +86,76 @@ const App: React.FC = () => {
     document.body.removeChild(link);
   };
 
+  // Helper: Export PDF
+  const exportPDF = async () => {
+    try {
+      const doc = new jsPDF();
+      
+      // Load Thai Font (THSarabunNew)
+      const fontUrl = 'https://cdn.jsdelivr.net/gh/nokstatic/public-fonts@master/THSarabunNew/THSarabunNew.ttf';
+      const fontName = 'THSarabunNew';
+      
+      const response = await fetch(fontUrl);
+      const buffer = await response.arrayBuffer();
+      
+      // Convert to base64 string for jsPDF
+      const binary = String.fromCharCode(...new Uint8Array(buffer));
+      const base64Font = btoa(binary);
+
+      doc.addFileToVFS('THSarabunNew.ttf', base64Font);
+      doc.addFont('THSarabunNew.ttf', fontName, 'normal');
+      doc.setFont(fontName);
+
+      // Header
+      doc.setFontSize(20);
+      doc.text("รายงานการลงทะเบียน (Registration Report)", 105, 15, { align: 'center' });
+      doc.setFontSize(14);
+      doc.text(`วันที่: ${new Date().toLocaleDateString('th-TH')}`, 105, 22, { align: 'center' });
+      
+      // Stats Summary
+      doc.setFontSize(12);
+      const summary = `ทั้งหมด: ${stats.total} | มาแล้ว: ${stats.checkedIn} (อยู่ในงาน: ${stats.present}, กลับแล้ว: ${stats.returned}) | ยังไม่มา: ${stats.pending}`;
+      doc.text(summary, 105, 30, { align: 'center' });
+
+      // Table
+      const tableColumn = ["ลำดับ", "ชื่อ-นามสกุล", "เบอร์โทร", "สถานะ", "เวลาเข้า", "เวลาออก"];
+      const tableRows = users.map(user => {
+        let statusText = 'ยังไม่มา';
+        if (user.status === 'checked-in') statusText = 'อยู่ในงาน';
+        if (user.status === 'checked-out') statusText = 'กลับแล้ว';
+        
+        return [
+          user.id,
+          user.name,
+          user.phone,
+          statusText,
+          user.checkInTime || '-',
+          user.checkOutTime || '-'
+        ];
+      });
+
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 35,
+        styles: { font: fontName, fontSize: 12 },
+        headStyles: { fillColor: [59, 130, 246] }, // Blue Header
+        theme: 'grid'
+      });
+
+      doc.save(`EventCheck_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (error) {
+      console.error("PDF Generation Error:", error);
+      alert("ไม่สามารถสร้างไฟล์ PDF ได้ในขณะนี้ (Error loading fonts)");
+    }
+  };
+
   // Session Management
   const handleResetSession = () => {
     if (confirm("คุณต้องการจบการลงทะเบียนรอบนี้ใช่หรือไม่?\nระบบจะดาวน์โหลดรายงานอัตโนมัติ และรีเซ็ตสถานะทุกคนเป็น 'ยังไม่มา'")) {
-      exportCSV(); // Auto export
-      setUsers(prev => prev.map(u => ({ ...u, status: 'pending', checkInTime: undefined })));
+      exportCSV(); // Auto export CSV
+      exportPDF(); // Auto export PDF
+      setUsers(prev => prev.map(u => ({ ...u, status: 'pending', checkInTime: undefined, checkOutTime: undefined })));
     }
   };
 
@@ -220,7 +303,8 @@ const App: React.FC = () => {
                  onAddUser={handleAddUser}
                  onUpdateUser={handleUpdateUser}
                  onImportUsers={handleImportUsers}
-                 onExportUsers={exportCSV}
+                 onExportCSV={exportCSV}
+                 onExportPDF={exportPDF}
                />
             </section>
           </div>
@@ -230,7 +314,9 @@ const App: React.FC = () => {
           <div className="space-y-6 animate-fade-in">
             <header className="text-center mb-4 md:mb-8">
               <h2 className="text-2xl md:text-3xl font-bold text-gray-800">จุดลงทะเบียน</h2>
-              <p className="text-gray-500 mt-2 text-sm md:text-base">กรุณาสแกน QR Code เพื่อบันทึกเวลา</p>
+              <p className="text-gray-500 mt-2 text-sm md:text-base">
+                สแกนครั้งแรกเพื่อ <span className="text-emerald-600 font-bold">ลงทะเบียนเข้า</span> / สแกนซ้ำเพื่อ <span className="text-amber-600 font-bold">ลงทะเบียนออก</span>
+              </p>
             </header>
             <Scanner users={users} onScan={handleCheckIn} />
           </div>

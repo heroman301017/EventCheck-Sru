@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { User } from '../types';
-import { Search, Download, Check, Clock, QrCode, Edit2, Plus, Upload, X, Save } from 'lucide-react';
+import { Search, Download, Check, Clock, QrCode, Edit2, Plus, Upload, X, Save, LogOut, FileText, FileSpreadsheet } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
 interface UserListProps {
@@ -9,13 +9,15 @@ interface UserListProps {
   onAddUser: (name: string, phone: string) => void;
   onUpdateUser: (user: User) => void;
   onImportUsers: (users: { name: string; phone: string }[]) => void;
-  onExportUsers: () => void;
+  onExportCSV: () => void;
+  onExportPDF: () => void;
 }
 
-export const UserList: React.FC<UserListProps> = ({ users, isEditable, onAddUser, onUpdateUser, onImportUsers, onExportUsers }) => {
+export const UserList: React.FC<UserListProps> = ({ users, isEditable, onAddUser, onUpdateUser, onImportUsers, onExportCSV, onExportPDF }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filter, setFilter] = useState<'all' | 'checked-in' | 'pending'>('all');
+  const [filter, setFilter] = useState<'all' | 'checked-in' | 'checked-out' | 'pending'>('all');
   const [selectedQr, setSelectedQr] = useState<User | null>(null);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
   
   // Modal States
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -82,6 +84,12 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onAddUser
     }
   };
 
+  const handlePDFClick = async () => {
+    setIsExportingPDF(true);
+    await onExportPDF();
+    setIsExportingPDF(false);
+  };
+
   // Helper to mask phone number
   const formatPhoneNumber = (phone: string) => {
     if (isEditable) return phone; // Show full number in Admin Mode
@@ -115,7 +123,8 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onAddUser
             onChange={(e) => setFilter(e.target.value as any)}
           >
             <option value="all">ทั้งหมด ({users.length})</option>
-            <option value="checked-in">มาแล้ว ({users.filter(u => u.status === 'checked-in').length})</option>
+            <option value="checked-in">อยู่ในงาน ({users.filter(u => u.status === 'checked-in').length})</option>
+            <option value="checked-out">กลับแล้ว ({users.filter(u => u.status === 'checked-out').length})</option>
             <option value="pending">ยังไม่มา ({users.filter(u => u.status === 'pending').length})</option>
           </select>
 
@@ -146,13 +155,26 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onAddUser
                 <span>Import CSV</span>
               </button>
               
-              <button 
-                onClick={onExportUsers}
-                className="flex items-center gap-2 px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium transition-colors"
-              >
-                <Download className="w-4 h-4" />
-                <span>Export Report</span>
-              </button>
+              <div className="flex bg-gray-100 rounded-lg p-1 gap-1">
+                <button 
+                  onClick={onExportCSV}
+                  className="flex items-center gap-2 px-3 py-2 text-emerald-700 hover:bg-white hover:shadow-sm rounded-md text-sm font-medium transition-all"
+                  title="Download CSV"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>CSV</span>
+                </button>
+                <div className="w-px bg-gray-300 my-1"></div>
+                <button 
+                  onClick={handlePDFClick}
+                  disabled={isExportingPDF}
+                  className="flex items-center gap-2 px-3 py-2 text-red-700 hover:bg-white hover:shadow-sm rounded-md text-sm font-medium transition-all disabled:opacity-50"
+                  title="Download PDF"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>{isExportingPDF ? 'Generating...' : 'PDF'}</span>
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -163,12 +185,13 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onAddUser
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-gray-100 text-gray-600 text-sm uppercase tracking-wider">
-              <th className="p-4 font-semibold border-b">ลำดับ</th>
+              <th className="p-4 font-semibold border-b w-16">ลำดับ</th>
               <th className="p-4 font-semibold border-b">ชื่อ-สกุล</th>
               <th className="p-4 font-semibold border-b">เบอร์โทร</th>
-              <th className="p-4 font-semibold border-b text-center">QR</th>
+              <th className="p-4 font-semibold border-b text-center w-20">QR</th>
               <th className="p-4 font-semibold border-b text-center">สถานะ</th>
-              <th className="p-4 font-semibold border-b text-right">เวลา</th>
+              <th className="p-4 font-semibold border-b text-center">เวลาเข้า</th>
+              <th className="p-4 font-semibold border-b text-center">เวลาออก</th>
               {isEditable && <th className="p-4 font-semibold border-b text-center">แก้ไข</th>}
             </tr>
           </thead>
@@ -176,50 +199,59 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onAddUser
             {filteredUsers.length > 0 ? (
               filteredUsers.map((user) => {
                 const isCheckedIn = user.status === 'checked-in';
+                const isCheckedOut = user.status === 'checked-out';
+                
+                let rowClass = 'hover:bg-gray-50 border-gray-100 text-gray-700';
+                if (isCheckedIn) rowClass = 'bg-green-100 hover:bg-green-200 border-green-200 text-green-900';
+                if (isCheckedOut) rowClass = 'bg-gray-200 hover:bg-gray-300 border-gray-300 text-gray-600'; // Gray for checked out
+
                 return (
                   <tr 
                     key={user.id} 
-                    className={`
-                      border-b transition-colors
-                      ${isCheckedIn 
-                        ? 'bg-green-100 hover:bg-green-200 border-green-200 text-green-900' // Green Strip for Checked In
-                        : 'hover:bg-gray-50 border-gray-100 text-gray-700' // Default White
-                      }
-                    `}
+                    className={`border-b transition-colors ${rowClass}`}
                   >
-                    <td className={`p-4 font-medium ${isCheckedIn ? 'text-green-800' : 'text-gray-500'}`}>{user.id}</td>
+                    <td className="p-4 font-medium opacity-70">{user.id}</td>
                     <td className="p-4 font-medium">{user.name}</td>
-                    <td className={`p-4 font-mono ${isCheckedIn ? 'text-green-800' : 'text-gray-600'}`}>
+                    <td className="p-4 font-mono opacity-80">
                       {formatPhoneNumber(user.phone)}
                     </td>
                     <td className="p-4 text-center">
                       <button 
                         onClick={() => setSelectedQr(user)}
-                        className={`${isCheckedIn ? 'text-green-600 hover:text-green-800' : 'text-gray-400 hover:text-blue-600'} transition-colors`}
+                        className={`${isCheckedIn ? 'text-green-700' : isCheckedOut ? 'text-gray-500' : 'text-gray-400 hover:text-blue-600'} transition-colors`}
                         title="Show QR"
                       >
                         <QrCode className="w-5 h-5 mx-auto" />
                       </button>
                     </td>
                     <td className="p-4 text-center">
-                      {isCheckedIn ? (
-                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/50 text-green-800 border border-green-200">
-                          <Check className="w-3 h-3" /> มาแล้ว
+                      {isCheckedIn && (
+                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/60 text-green-800 border border-green-200">
+                          <Check className="w-3 h-3" /> อยู่ในงาน
                         </span>
-                      ) : (
+                      )}
+                      {isCheckedOut && (
+                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/60 text-gray-600 border border-gray-300">
+                          <LogOut className="w-3 h-3" /> กลับแล้ว
+                        </span>
+                      )}
+                      {user.status === 'pending' && (
                         <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
                           <Clock className="w-3 h-3" /> รอ
                         </span>
                       )}
                     </td>
-                    <td className={`p-4 text-right ${isCheckedIn ? 'text-green-800 font-medium' : 'text-gray-500'}`}>
+                    <td className="p-4 text-center font-medium opacity-80">
                       {user.checkInTime || '-'}
+                    </td>
+                    <td className="p-4 text-center font-medium opacity-80">
+                      {user.checkOutTime || '-'}
                     </td>
                     {isEditable && (
                       <td className="p-4 text-center">
                         <button 
                           onClick={() => { setEditingUser(user); setIsEditModalOpen(true); }}
-                          className={`${isCheckedIn ? 'text-green-600 hover:text-green-800' : 'text-gray-400 hover:text-amber-500'} transition-colors`}
+                          className="text-gray-500 hover:text-amber-600 transition-colors"
                           title="Edit User"
                         >
                           <Edit2 className="w-4 h-4 mx-auto" />
@@ -231,7 +263,7 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onAddUser
               })
             ) : (
               <tr>
-                <td colSpan={isEditable ? 7 : 6} className="p-8 text-center text-gray-500">
+                <td colSpan={isEditable ? 8 : 7} className="p-8 text-center text-gray-500">
                   ไม่พบข้อมูล
                 </td>
               </tr>
@@ -296,7 +328,8 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onAddUser
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="pending">รอ (Pending)</option>
-                  <option value="checked-in">มาแล้ว (Checked In)</option>
+                  <option value="checked-in">อยู่ในงาน (Checked In)</option>
+                  <option value="checked-out">กลับแล้ว (Checked Out)</option>
                 </select>
               </div>
               <div className="pt-2 flex gap-3">

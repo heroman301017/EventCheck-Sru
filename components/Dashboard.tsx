@@ -1,13 +1,13 @@
 import React from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Stats } from '../types';
-import { Users, UserCheck, UserX } from 'lucide-react';
+import { Users, UserCheck, UserX, LogOut } from 'lucide-react';
 
 interface DashboardProps {
   stats: Stats;
 }
 
-const COLORS = ['#10B981', '#F59E0B']; // Green, Amber
+const COLORS = ['#10B981', '#6B7280', '#F59E0B']; // Green, Gray, Amber
 
 const StatCard: React.FC<{ title: string; value: number; icon: React.ReactNode; color: string; sub?: string }> = ({ title, value, icon, color, sub }) => (
   <div className={`bg-white rounded-xl shadow-md p-6 border-l-4 ${color} flex items-center justify-between`}>
@@ -26,13 +26,14 @@ const StatCard: React.FC<{ title: string; value: number; icon: React.ReactNode; 
 
 export const Dashboard: React.FC<DashboardProps> = ({ stats }) => {
   const pieData = [
-    { name: 'มาถึงแล้ว (Checked In)', value: stats.checkedIn },
+    { name: 'อยู่ในงาน (Present)', value: stats.present },
+    { name: 'กลับแล้ว (Returned)', value: stats.returned },
     { name: 'ยังไม่มา (Pending)', value: stats.pending },
   ];
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
           title="ยอดรวมทั้งหมด" 
           value={stats.total} 
@@ -40,11 +41,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats }) => {
           color="border-blue-600" 
         />
         <StatCard 
-          title="ลงทะเบียนแล้ว" 
-          value={stats.checkedIn} 
-          sub={`(${stats.percentage.toFixed(1)}%)`}
+          title="อยู่ในงาน" 
+          value={stats.present} 
           icon={<UserCheck className="w-8 h-8 text-emerald-500" />} 
           color="border-emerald-500" 
+        />
+        <StatCard 
+          title="กลับบ้านแล้ว" 
+          value={stats.returned} 
+          icon={<LogOut className="w-8 h-8 text-gray-500" />} 
+          color="border-gray-500" 
         />
         <StatCard 
           title="ยังไม่ลงทะเบียน" 
@@ -57,7 +63,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats }) => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Pie Chart */}
         <div className="bg-white p-6 rounded-xl shadow-md">
-          <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">สัดส่วนการลงทะเบียน</h3>
+          <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">สัดส่วนสถานะปัจจุบัน</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -85,9 +91,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats }) => {
           </div>
         </div>
 
-        {/* Bar Chart (Simulated Hourly check-in - visualized as simple distribution for now) */}
+        {/* Bar Chart */}
          <div className="bg-white p-6 rounded-xl shadow-md">
-          <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">สถานะภาพรวม</h3>
+          <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">ความคืบหน้าการเข้าร่วม</h3>
           <div className="h-64 flex items-center justify-center">
              <ResponsiveContainer width="100%" height="100%">
                <BarChart data={pieData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
