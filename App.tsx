@@ -4,7 +4,7 @@ import { INITIAL_USERS, normalizePhone } from './constants';
 import { Dashboard } from './components/Dashboard';
 import { UserList } from './components/UserList';
 import { Scanner } from './components/Scanner';
-import { LayoutDashboard, ScanLine, QrCode, Lock, Unlock, RefreshCw, Trash2, ShieldCheck, X } from 'lucide-react';
+import { LayoutDashboard, ScanLine, QrCode, Lock, Unlock, RefreshCw, Trash2, ShieldCheck, X, Clock, AlertTriangle } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -17,6 +17,38 @@ const App: React.FC = () => {
   const [showLogin, setShowLogin] = useState(false);
   const [password, setPassword] = useState('');
   const loginInputRef = useRef<HTMLInputElement>(null);
+
+  // Demo Mode State
+  const [demoStatus, setDemoStatus] = useState<{ daysLeft: number; isExpired: boolean }>({ daysLeft: 30, isExpired: false });
+
+  // Initialize Demo Mode
+  useEffect(() => {
+    const DEMO_DAYS = 30;
+    const DEMO_DURATION = DEMO_DAYS * 24 * 60 * 60 * 1000; 
+    const STORAGE_KEY = 'eventcheck_demo_start_v1';
+    
+    const storedStart = localStorage.getItem(STORAGE_KEY);
+    let startTime = 0;
+
+    if (storedStart) {
+      startTime = parseInt(storedStart, 10);
+    } else {
+      startTime = Date.now();
+      localStorage.setItem(STORAGE_KEY, startTime.toString());
+    }
+    
+    const elapsed = Date.now() - startTime;
+    const remaining = DEMO_DURATION - elapsed;
+    
+    if (remaining <= 0) {
+      setDemoStatus({ daysLeft: 0, isExpired: true });
+    } else {
+      setDemoStatus({ 
+        daysLeft: Math.ceil(remaining / (24 * 60 * 60 * 1000)), 
+        isExpired: false 
+      });
+    }
+  }, []);
 
   // Auto focus on login input when modal opens
   useEffect(() => {
@@ -207,6 +239,33 @@ const App: React.FC = () => {
     }
   };
 
+  if (demoStatus.isExpired) {
+    return (
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-slate-100 font-sans p-4 text-center">
+        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full border-t-8 border-rose-500 animate-in zoom-in">
+           <div className="w-20 h-20 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-6">
+             <AlertTriangle className="w-10 h-10 text-rose-500" />
+           </div>
+           <h1 className="text-3xl font-bold text-slate-800 mb-2">Demo Expired</h1>
+           <p className="text-slate-500 mb-8">
+             ระยะเวลาทดลองใช้งาน 30 วันสิ้นสุดแล้ว<br/>กรุณาติดต่อผู้พัฒนาเพื่อใช้งานต่อ
+           </p>
+           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6">
+             <p className="text-sm text-slate-400 font-medium uppercase tracking-wider mb-1">Contact Developer</p>
+             <p className="text-xl font-bold text-violet-600">Codelex.PHR</p>
+           </div>
+           <button 
+             onClick={() => window.location.reload()}
+             className="w-full py-3 bg-slate-800 text-white rounded-xl font-medium hover:bg-slate-900 transition-colors"
+           >
+             Refresh Page
+           </button>
+        </div>
+        <p className="mt-8 text-slate-400 text-sm">Developed by Codelex.PHR</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-[100dvh] flex flex-col bg-slate-50 font-sans overflow-hidden">
       {/* Header */}
@@ -216,12 +275,21 @@ const App: React.FC = () => {
             <div className="bg-gradient-to-tr from-violet-500 to-fuchsia-500 p-2 rounded-xl shadow-md shadow-violet-200">
               <QrCode className="w-6 h-6 text-white" />
             </div>
-            <h1 className="text-xl font-bold text-slate-700 tracking-tight hidden sm:block">
-              Event<span className="text-violet-500">Check</span>
-            </h1>
+            <div className="hidden sm:block">
+              <h1 className="text-xl font-bold text-slate-700 tracking-tight leading-none">
+                Event<span className="text-violet-500">Check</span>
+              </h1>
+              <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">by Codelex.PHR</span>
+            </div>
           </div>
           
           <div className="flex items-center gap-3">
+            {/* Demo Badge */}
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${demoStatus.daysLeft <= 5 ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200'} hidden md:flex`}>
+              <Clock className="w-3.5 h-3.5" />
+              <span>Demo: {demoStatus.daysLeft} วัน</span>
+            </div>
+
             <nav className="flex space-x-1 bg-slate-100 p-1 rounded-2xl">
               {[
                 { id: 'scan', icon: ScanLine, label: 'จุดสแกน' },
@@ -359,7 +427,7 @@ const App: React.FC = () => {
       {/* Footer - Minimal on Scan tab */}
       <footer className={`bg-white border-t border-slate-100 py-4 shrink-0 ${activeTab === 'scan' ? 'hidden md:block' : 'mt-auto'}`}>
         <div className="max-w-7xl mx-auto px-4 text-center text-sm text-slate-400">
-          Made with 💜 for Students &middot; &copy; {new Date().getFullYear()} EventCheck
+          Developed by <strong>Codelex.PHR</strong> &middot; &copy; {new Date().getFullYear()} EventCheck
         </div>
       </footer>
     </div>
