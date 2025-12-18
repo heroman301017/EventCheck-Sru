@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { User, Stats, Event, SystemSettings } from './types';
 import { INITIAL_USERS, INITIAL_EVENTS, normalizePhone } from './constants';
@@ -7,7 +8,7 @@ import { Scanner } from './components/Scanner';
 import { 
   LayoutDashboard, ScanLine, QrCode, Lock, Unlock, RefreshCw, 
   Trash2, ShieldCheck, X, Clock, AlertTriangle, Calendar, 
-  MapPin, Settings, Power, Info, RotateCcw
+  MapPin, Settings, Power, Info, RotateCcw, Loader2
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -15,69 +16,48 @@ import { RegistrationForm } from './components/RegistrationForm';
 import { EventPass } from './components/EventPass';
 import { EventManager } from './components/EventManager';
 
+// *** ใส่ URL ของ Google Apps Script ที่ Deploy แล้วที่นี่ ***
+const API_URL = "https://script.google.com/macros/s/AKfycbw5DmFpm8IfR9fbBf2ddHQj_Gsqv0QF2FVCZXa8dywx9PPPRv5CYYChXJNkDAVF7Lk/exec";
+
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'scan' | 'register' | 'events'>('register');
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('eventcheck_users_v3');
-    return saved ? JSON.parse(saved) : INITIAL_USERS;
-  });
-  const [events, setEvents] = useState<Event[]>(() => {
-    const saved = localStorage.getItem('eventcheck_events_v3');
-    return saved ? JSON.parse(saved) : INITIAL_EVENTS;
-  });
-  const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => {
-    const saved = localStorage.getItem('eventcheck_settings_v3');
-    return saved ? JSON.parse(saved) : {
-      isRegistrationOpen: true,
-      isScanningOpen: true,
-      allowPublicDashboard: true
-    };
+  const [users, setUsers] = useState<User[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>({
+    isRegistrationOpen: true,
+    isScanningOpen: true,
+    allowPublicDashboard: true
   });
   
-  const [selectedEventId, setSelectedEventId] = useState<string>(() => events[0]?.id || 'e1');
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [password, setPassword] = useState('');
   const [registeredUser, setRegisteredUser] = useState<User | null>(null);
-  const [demoStatus, setDemoStatus] = useState({ daysLeft: 30, isExpired: false });
 
-  useEffect(() => {
-    localStorage.setItem('eventcheck_users_v3', JSON.stringify(users));
-  }, [users]);
-
-  useEffect(() => {
-    localStorage.setItem('eventcheck_events_v3', JSON.stringify(events));
-  }, [events]);
-
-  useEffect(() => {
-    localStorage.setItem('eventcheck_settings_v3', JSON.stringify(systemSettings));
-  }, [systemSettings]);
-
-  useEffect(() => {
-    const DEMO_DAYS = 30;
-    const STORAGE_KEY = 'eventcheck_demo_start_v1';
-    let startTime = parseInt(localStorage.getItem(STORAGE_KEY) || "0", 10);
-    if (!startTime) {
-      startTime = Date.now();
-      localStorage.setItem(STORAGE_KEY, startTime.toString());
+  // Load Data from Google Sheets
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(API_URL);
+      const data = await response.json();
+      setUsers(data.users);
+      setEvents(data.events);
+      setSystemSettings(data.settings);
+      if (!selectedEventId && data.events.length > 0) {
+        setSelectedEventId(data.events[0].id);
+      }
+    } catch (error) {
+      console.error("Fetch Error:", error);
+    } finally {
+      setIsLoading(false);
     }
-    const remaining = (DEMO_DAYS * 24 * 60 * 60 * 1000) - (Date.now() - startTime);
-    setDemoStatus({
-      daysLeft: Math.max(0, Math.ceil(remaining / (24 * 60 * 60 * 1000))),
-      isExpired: remaining <= 0
-    });
+  };
+
+  useEffect(() => {
+    fetchData();
   }, []);
-
-  useEffect(() => {
-    if (!isAdmin) {
-      if (!systemSettings.isRegistrationOpen && activeTab === 'register') {
-        setActiveTab(systemSettings.isScanningOpen ? 'scan' : 'overview');
-      }
-      if (!systemSettings.isScanningOpen && activeTab === 'scan') {
-        setActiveTab('overview');
-      }
-    }
-  }, [systemSettings, isAdmin, activeTab]);
 
   const currentEvent = useMemo(() => {
     return events.find(e => e.id === selectedEventId) || events[0] || INITIAL_EVENTS[0];
@@ -93,19 +73,48 @@ const App: React.FC = () => {
     return { total, checkedIn, present, returned, pending: total - checkedIn, percentage: total > 0 ? (checkedIn / total) * 100 : 0 };
   }, [currentEventUsers]);
 
-  const handleCheckIn = (scannedValue: string) => {
-    if (!systemSettings.isScanningOpen && !isAdmin) return;
-    setUsers(prev => prev.map(u => {
-      if ((u.phone === scannedValue || u.studentId === scannedValue) && u.eventId === selectedEventId) {
-        const now = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-        if (u.status === 'pending') return { ...u, status: 'checked-in', checkInTime: now };
-        if (u.status === 'checked-in') return { ...u, status: 'checked-out', checkOutTime: now };
-      }
-      return u;
-    }));
+  const postAction = async (payload: any) => {
+    try {
+      await fetch(API_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      fetchData();
+    } catch (error) {
+      console.error("Post Action Error:", error);
+    }
   };
 
-  const handleRegister = (userData: Partial<User>) => {
+  const handleCheckIn = async (scannedValue: string) => {
+    if (!systemSettings.isScanningOpen && !isAdmin) return;
+    const user = currentEventUsers.find(u => u.phone === scannedValue || u.studentId === scannedValue);
+    if (!user) return;
+
+    let newStatus: 'checked-in' | 'checked-out' = 'checked-in';
+    if (user.status === 'checked-in') newStatus = 'checked-out';
+    if (user.status === 'checked-out') return;
+
+    const now = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+    
+    setUsers(prev => prev.map(u => (u.studentId === user.studentId && u.eventId === selectedEventId) ? {
+      ...u, 
+      status: newStatus, 
+      checkInTime: newStatus === 'checked-in' ? now : u.checkInTime,
+      checkOutTime: newStatus === 'checked-out' ? now : u.checkOutTime
+    } : u));
+
+    await postAction({
+      action: "checkIn",
+      studentId: user.studentId,
+      eventId: selectedEventId,
+      status: newStatus,
+      time: now
+    });
+  };
+
+  const handleRegister = async (userData: Partial<User>) => {
     if (!systemSettings.isRegistrationOpen && !isAdmin) return;
     const newUser: User = {
       id: Date.now(),
@@ -117,11 +126,34 @@ const App: React.FC = () => {
       eventId: selectedEventId,
       status: 'pending'
     };
+    
     setUsers(prev => [...prev, newUser]);
     setRegisteredUser(newUser);
+
+    await postAction({
+      action: "register",
+      user: newUser
+    });
   };
 
-  const handleImportUsers = (newUsers: any[]) => {
+  const handleUpdateUser = async (user: User) => {
+    setUsers(prev => prev.map(u => u.id === user.id ? user : u));
+    await postAction({
+      action: "updateUser",
+      user: user
+    });
+  };
+
+  const handleDeleteUser = async (id: number) => {
+    if(!confirm('ยืนยันการลบรายชื่อ?')) return;
+    setUsers(prev => prev.filter(u => u.id !== id));
+    await postAction({
+      action: "deleteUser",
+      id: id
+    });
+  };
+
+  const handleImportUsers = async (newUsers: any[]) => {
     const formatted = newUsers.map((u, i) => ({
       id: Date.now() + i,
       studentId: u.studentId || '',
@@ -133,21 +165,28 @@ const App: React.FC = () => {
       status: 'pending' as const
     }));
     
-    setUsers(prev => {
-      const otherEventUsers = prev.filter(u => u.eventId !== selectedEventId);
-      return [...otherEventUsers, ...formatted];
+    setUsers(prev => [...prev, ...formatted]);
+
+    await postAction({
+      action: "importUsers",
+      users: formatted
     });
   };
 
-  const handleResetRound = () => {
-    if(confirm('ยืนยันการจบรอบ? สถานะการเช็คอินทั้งหมดจะถูกรีเซ็ตเป็น "รอลงทะเบียน" แต่รายชื่อจะไม่ถูกลบ')) {
-      setUsers(prev => prev.map(u => u.eventId === selectedEventId ? {...u, status:'pending', checkInTime:undefined, checkOutTime:undefined} : u));
-    }
+  const handleToggleSetting = async (key: keyof SystemSettings) => {
+    const newValue = !systemSettings[key];
+    setSystemSettings({ ...systemSettings, [key]: newValue });
+    await postAction({
+      action: "updateSettings",
+      key,
+      value: newValue
+    });
   };
 
-  const handleClearAll = () => {
-    if(confirm('ยืนยันการล้างข้อมูลทั้งหมด? รายชื่อนักศึกษาทั้งหมดในกิจกรรมนี้จะถูกลบออกถาวร!')) {
-      setUsers(prev => prev.filter(u => u.eventId !== selectedEventId));
+  const handleResetRound = async () => {
+    if(confirm('ยืนยันการจบรอบ? ข้อมูลใน Google Sheets จะถูกรีเซ็ตสถานะเป็น "รอ"')) {
+      setUsers(prev => prev.map(u => u.eventId === selectedEventId ? {...u, status:'pending', checkInTime:undefined, checkOutTime:undefined} : u));
+      await postAction({ action: "resetRound", eventId: selectedEventId });
     }
   };
 
@@ -161,39 +200,17 @@ const App: React.FC = () => {
     const blob = new Blob([bom + headers + rows], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `Report_${currentEvent.name}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `Report_${currentEvent.name}.csv`;
     link.click();
   };
 
   const exportPDF = async () => {
     try {
       const doc = new jsPDF();
-      
-      // Use the most reliable Google Fonts CDN link for Sarabun Regular
-      const fontUrls = [
-        'https://fonts.gstatic.com/s/sarabun/v13/dtm66pU_S8fS66tI_8B6T6Y.ttf', // Google Fonts direct CDN
-        'https://cdn.jsdelivr.net/gh/googlefonts/sarabun@master/fonts/Sarabun-Regular.ttf',
-        'https://cdn.jsdelivr.net/gh/nokstatic/public-fonts@master/THSarabunNew/THSarabunNew.ttf'
-      ];
-      
-      let fontResponse = null;
-      for (const url of fontUrls) {
-        try {
-          const resp = await fetch(url, { mode: 'cors', cache: 'force-cache' });
-          if (resp.ok) {
-            fontResponse = resp;
-            break;
-          }
-        } catch (e) {
-          console.warn(`Source ${url} failed, trying next...`);
-        }
-      }
-      
-      if (!fontResponse) throw new Error('Font download failed');
-      
-      const buffer = await fontResponse.arrayBuffer();
+      const fontUrl = 'https://fonts.gstatic.com/s/sarabun/v13/dtm66pU_S8fS66tI_8B6T6Y.ttf';
+      const response = await fetch(fontUrl);
+      const buffer = await response.arrayBuffer();
       const bytes = new Uint8Array(buffer);
-      // Modern robust conversion to base64
       const binary = Array.from(bytes).map(b => String.fromCharCode(b)).join('');
       const base64Font = btoa(binary);
 
@@ -203,28 +220,24 @@ const App: React.FC = () => {
       
       doc.setFontSize(18);
       doc.text(`รายงาน: ${currentEvent.name}`, 105, 15, { align: 'center' });
-      doc.setFontSize(10);
-      doc.text(`โดย Codelex.PHR | ทั้งหมด ${stats.total} | ในงาน ${stats.present} | กลับแล้ว ${stats.returned}`, 105, 22, { align: 'center' });
-
       autoTable(doc, {
         head: [["รหัสนักศึกษา", "ชื่อ-นามสกุล", "คณะ", "สถานะ", "เวลาเข้า"]],
-        body: currentEventUsers.map(u => [
-          u.studentId || '-', 
-          u.name || '-', 
-          u.faculty || '-', 
-          u.status === 'checked-in' ? 'มาแล้ว' : u.status === 'checked-out' ? 'กลับแล้ว' : 'รอ', 
-          u.checkInTime || '-'
-        ]),
+        body: currentEventUsers.map(u => [u.studentId, u.name, u.faculty, u.status, u.checkInTime || '-']),
         startY: 30,
-        styles: { font: 'Sarabun', fontSize: 10 },
-        headStyles: { fillColor: [124, 58, 237] }
+        styles: { font: 'Sarabun', fontSize: 10 }
       });
       doc.save(`Report_${currentEvent.name}.pdf`);
-    } catch (error) {
-      console.error('PDF Export Error:', error);
-      alert('เกิดข้อผิดพลาดในการโหลดฟอนต์ภาษาไทยเพื่อสร้าง PDF กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต และลองใหม่อีกครั้ง หรือสามารถใช้งาน Export CSV แทนได้');
-    }
+    } catch (e) { alert('PDF Error'); }
   };
+
+  if (isLoading) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
+        <Loader2 className="w-12 h-12 text-violet-500 animate-spin" />
+        <p className="font-bold text-slate-400 animate-pulse">กำลังเชื่อมต่อฐานข้อมูล Google Sheets...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-slate-50 font-sans overflow-hidden">
@@ -232,10 +245,7 @@ const App: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="bg-gradient-to-tr from-violet-500 to-fuchsia-500 p-2 rounded-xl shadow-md"><QrCode className="w-6 h-6 text-white" /></div>
-            <div className="hidden sm:block">
-              <h1 className="text-xl font-bold text-slate-700 leading-none">Event<span className="text-violet-500">Check</span></h1>
-              <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">System Management</span>
-            </div>
+            <h1 className="text-xl font-bold text-slate-700 hidden sm:block">Event<span className="text-violet-500">Check</span></h1>
           </div>
           
           <div className="flex items-center gap-2">
@@ -258,19 +268,10 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {isAdmin && (
-        <div className="bg-slate-800 text-white py-1 px-4 text-[9px] flex items-center justify-center gap-4 uppercase tracking-[0.2em] font-bold">
-          <span className="flex items-center gap-1"><Power className={`w-2.5 h-2.5 ${systemSettings.isRegistrationOpen ? 'text-emerald-400' : 'text-rose-400'}`} /> REG: {systemSettings.isRegistrationOpen ? 'OPEN' : 'CLOSED'}</span>
-          <span className="flex items-center gap-1"><Power className={`w-2.5 h-2.5 ${systemSettings.isScanningOpen ? 'text-emerald-400' : 'text-rose-400'}`} /> SCAN: {systemSettings.isScanningOpen ? 'OPEN' : 'CLOSED'}</span>
-          <span className="flex items-center gap-1"><Clock className="text-amber-400 w-2.5 h-2.5" /> DEMO: {demoStatus.daysLeft} DAYS</span>
-        </div>
-      )}
-
       {activeTab !== 'events' && (
-        <div className="bg-violet-600 text-white py-2 shadow-inner overflow-hidden">
+        <div className="bg-violet-600 text-white py-2 shadow-inner">
            <div className="max-w-7xl mx-auto px-4 flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
-              <Calendar className="w-4 h-4 shrink-0 opacity-70" />
-              <span className="text-[10px] font-bold uppercase tracking-widest shrink-0">Event Selection:</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">Event:</span>
               {events.map(e => (
                 <button key={e.id} onClick={() => setSelectedEventId(e.id)} className={`px-4 py-1 rounded-full text-[10px] font-bold transition-all ${selectedEventId === e.id ? 'bg-white text-violet-600' : 'bg-violet-400/50 text-violet-100'}`}>{e.name}</button>
               ))}
@@ -278,176 +279,68 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <main className={`flex-1 w-full max-w-7xl mx-auto px-4 py-6 overflow-y-auto ${activeTab === 'scan' || activeTab === 'register' ? 'flex flex-col items-center' : ''}`}>
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6 overflow-y-auto">
         {activeTab === 'register' && (
-          <div className="w-full max-w-2xl">
-            {systemSettings.isRegistrationOpen || isAdmin ? (
-              !registeredUser ? <RegistrationForm eventName={currentEvent.name} onRegister={handleRegister} /> : <EventPass user={registeredUser} event={currentEvent} onBack={() => setRegisteredUser(null)} />
-            ) : (
-              <div className="bg-white p-12 rounded-[3rem] shadow-xl text-center flex flex-col items-center border border-slate-100">
-                <div className="w-24 h-24 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mb-6"><Lock className="w-12 h-12" /></div>
-                <h2 className="text-3xl font-bold text-slate-800 mb-2">ระบบปิดรับสมัคร</h2>
-                <p className="text-slate-400 max-w-xs">ขณะนี้กิจกรรมยังไม่เปิดให้ลงทะเบียน หรือปิดรับสมัครแล้ว โปรดติดต่อเจ้าหน้าที่ผู้ดูแลโครงการ</p>
-              </div>
-            )}
+          <div className="w-full max-w-2xl mx-auto">
+            {!registeredUser ? <RegistrationForm eventName={currentEvent.name} onRegister={handleRegister} /> : <EventPass user={registeredUser} event={currentEvent} onBack={() => setRegisteredUser(null)} />}
           </div>
         )}
 
-        {activeTab === 'scan' && (
-          <div className="w-full h-full flex flex-col items-center justify-center py-4">
-             {systemSettings.isScanningOpen || isAdmin ? (
-               <>
-                <div className="text-center mb-8"><h2 className="text-3xl font-bold text-slate-800">{currentEvent.name}</h2><p className="text-slate-500 mt-1">จุดตรวจสอบและลงทะเบียนเข้าร่วมโครงการ</p></div>
-                <Scanner users={currentEventUsers} onScan={handleCheckIn} />
-               </>
-             ) : (
-                <div className="bg-white p-12 rounded-[3rem] shadow-xl text-center flex flex-col items-center border border-slate-100">
-                  <div className="w-24 h-24 bg-slate-50 text-slate-400 rounded-full flex items-center justify-center mb-6"><Power className="w-12 h-12" /></div>
-                  <h2 className="text-3xl font-bold text-slate-800 mb-2">จุดสแกนปิดทำการ</h2>
-                  <p className="text-slate-400 max-w-xs">ระบบตรวจสอบสถานะปิดชั่วคราว เจ้าหน้าที่กรุณาแจ้ง Admin เพื่อขอเปิดใช้งาน</p>
-                </div>
-             )}
-          </div>
-        )}
+        {activeTab === 'scan' && <Scanner users={currentEventUsers} onScan={handleCheckIn} />}
 
         {activeTab === 'overview' && (
           <div className="space-y-8 pb-10">
             <div className="flex justify-between items-start">
-               <div><h2 className="text-2xl font-bold text-slate-800">{currentEvent.name}</h2><p className="text-slate-500 text-sm flex items-center gap-1.5 mt-1"><MapPin className="w-3.5 h-3.5" /> {currentEvent.location} &bull; {currentEvent.date}</p></div>
-               {isAdmin && <button onClick={handleResetRound} className="p-2.5 bg-rose-50 text-rose-500 hover:bg-rose-100 rounded-xl transition-colors" title="รีเซ็ตสถานะการลงทะเบียน"><RefreshCw className="w-5 h-5" /></button>}
+               <div><h2 className="text-2xl font-bold text-slate-800">{currentEvent.name}</h2><p className="text-slate-500 text-sm">{currentEvent.location} &bull; {currentEvent.date}</p></div>
+               {isAdmin && <button onClick={handleResetRound} className="p-2.5 bg-rose-50 text-rose-500 rounded-xl"><RefreshCw className="w-5 h-5" /></button>}
             </div>
             <Dashboard stats={stats} />
             <UserList 
               users={currentEventUsers} 
-              isEditable={isAdmin}
-              onAddUser={(name, phone) => handleRegister({ name, phone })}
-              onUpdateUser={(u) => setUsers(prev => prev.map(p => p.id === u.id ? u : p))}
-              onDeleteUser={(id) => { if(confirm('ยืนยันการลบรายชื่อ?')) setUsers(prev => prev.filter(u => u.id !== id)); }}
+              isEditable={isAdmin} 
+              onAddUser={(name, phone) => { handleRegister({ name, phone }); }} 
+              onUpdateUser={handleUpdateUser} 
+              onDeleteUser={handleDeleteUser} 
               onImportUsers={handleImportUsers} 
-              onExportCSV={exportCSV}
-              onExportPDF={exportPDF}
+              onExportCSV={exportCSV} 
+              onExportPDF={exportPDF} 
             />
           </div>
         )}
 
         {activeTab === 'events' && isAdmin && (
           <div className="space-y-10">
-            {/* Developer Control Panel */}
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-rose-100 animate-in slide-in-from-top-4">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-3 bg-rose-100 text-rose-600 rounded-2xl"><ShieldCheck className="w-6 h-6" /></div>
-                <div>
-                  <h2 className="text-xl font-bold text-slate-800">Developer Control Panel</h2>
-                  <p className="text-sm text-rose-400 font-medium">จัดการรอบการลงทะเบียน ล้างข้อมูล และแก้ไขรายชื่อ</p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-4">
-                 <button 
-                  onClick={handleResetRound}
-                  className="flex items-center gap-2 px-6 py-4 bg-violet-50 text-violet-600 border border-violet-100 rounded-2xl font-bold hover:bg-violet-100 transition-all active:scale-95 shadow-sm"
-                 >
-                    <RotateCcw className="w-5 h-5" /> จบรอบ & เริ่มใหม่
-                 </button>
-                 <button 
-                  onClick={handleClearAll}
-                  className="flex items-center gap-2 px-6 py-4 bg-rose-50 text-rose-600 border border-rose-100 rounded-2xl font-bold hover:bg-rose-100 transition-all active:scale-95 shadow-sm"
-                 >
-                    <Trash2 className="w-5 h-5" /> ล้างข้อมูลทั้งหมด
-                 </button>
-              </div>
-            </div>
-
-            {/* System Status Controls */}
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
-              <div className="flex items-center gap-3 mb-8">
-                <div className="p-3 bg-slate-100 text-slate-600 rounded-2xl"><Settings className="w-6 h-6" /></div>
-                <div>
-                  <h2 className="text-xl font-bold text-slate-800">System Visibility Settings</h2>
-                  <p className="text-sm text-slate-400">ควบคุมการเข้าถึงฟีเจอร์หลักสำหรับผู้ใช้งานทั่วไป</p>
-                </div>
-              </div>
-
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-rose-100">
+              <h2 className="text-xl font-bold text-slate-800 mb-6">Developer Control Panel (Sheets Sync)</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                 <div className="bg-slate-50 p-6 rounded-3xl flex items-center justify-between">
-                    <div>
-                      <p className="font-bold text-slate-700">ลงทะเบียน</p>
-                      <p className="text-xs text-slate-400">{systemSettings.isRegistrationOpen ? 'เปิดให้สมัคร' : 'ปิดรับสมัคร'}</p>
-                    </div>
-                    <button 
-                      onClick={() => setSystemSettings({...systemSettings, isRegistrationOpen: !systemSettings.isRegistrationOpen})}
-                      className={`w-14 h-8 rounded-full p-1 transition-colors duration-300 ${systemSettings.isRegistrationOpen ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                    >
-                      <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 ${systemSettings.isRegistrationOpen ? 'translate-x-6' : 'translate-x-0'}`}></div>
-                    </button>
-                 </div>
-
-                 <div className="bg-slate-50 p-6 rounded-3xl flex items-center justify-between">
-                    <div>
-                      <p className="font-bold text-slate-700">จุดสแกน</p>
-                      <p className="text-xs text-slate-400">{systemSettings.isScanningOpen ? 'เปิดสแกน' : 'ปิดสแกน'}</p>
-                    </div>
-                    <button 
-                      onClick={() => setSystemSettings({...systemSettings, isScanningOpen: !systemSettings.isScanningOpen})}
-                      className={`w-14 h-8 rounded-full p-1 transition-colors duration-300 ${systemSettings.isScanningOpen ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                    >
-                      <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 ${systemSettings.isScanningOpen ? 'translate-x-6' : 'translate-x-0'}`}></div>
-                    </button>
-                 </div>
-
-                 <div className="bg-slate-50 p-6 rounded-3xl flex items-center justify-between">
-                    <div>
-                      <p className="font-bold text-slate-700">แดชบอร์ด</p>
-                      <p className="text-xs text-slate-400">{systemSettings.allowPublicDashboard ? 'เป็นสาธารณะ' : 'ส่วนตัว (Admin เท่านั้น)'}</p>
-                    </div>
-                    <button 
-                      onClick={() => setSystemSettings({...systemSettings, allowPublicDashboard: !systemSettings.allowPublicDashboard})}
-                      className={`w-14 h-8 rounded-full p-1 transition-colors duration-300 ${systemSettings.allowPublicDashboard ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                    >
-                      <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 ${systemSettings.allowPublicDashboard ? 'translate-x-6' : 'translate-x-0'}`}></div>
-                    </button>
-                 </div>
+                 {['isRegistrationOpen', 'isScanningOpen', 'allowPublicDashboard'].map((key) => (
+                   <div key={key} className="bg-slate-50 p-6 rounded-3xl flex items-center justify-between">
+                      <span className="font-bold text-slate-700">{key}</span>
+                      <button 
+                        onClick={() => handleToggleSetting(key as keyof SystemSettings)}
+                        className={`w-14 h-8 rounded-full p-1 transition-colors ${systemSettings[key as keyof SystemSettings] ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                      >
+                        <div className={`w-6 h-6 bg-white rounded-full transform transition-transform ${systemSettings[key as keyof SystemSettings] ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                      </button>
+                   </div>
+                 ))}
               </div>
             </div>
-
-            <EventManager 
-              events={events} 
-              onSave={(e) => {
-                 setEvents(prev => {
-                   const exists = prev.some(p => p.id === e.id);
-                   return exists ? prev.map(p => p.id === e.id ? e : p) : [...prev, e];
-                 });
-              }}
-              onDelete={(id) => { 
-                if(events.length <= 1) return alert('ต้องมีอย่างน้อย 1 กิจกรรมเสมอ');
-                if(confirm('การลบกิจกรรมจะลบข้อมูลนักศึกษาที่สมัครในกิจกรรมนี้ทั้งหมด ยืนยันหรือไม่?')) { 
-                  const newEvents = events.filter(e => e.id !== id);
-                  setEvents(newEvents); 
-                  setUsers(prev => prev.filter(u => u.eventId !== id));
-                  if(selectedEventId === id) setSelectedEventId(newEvents[0].id);
-                } 
-              }}
-            />
           </div>
         )}
       </main>
 
       {showLogin && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-[2.5rem] p-8 max-w-xs w-full shadow-2xl animate-in zoom-in">
-             <div className="flex justify-between items-center mb-8"><h3 className="font-bold text-2xl text-slate-800">Owner Access</h3><button onClick={() => setShowLogin(false)} className="p-1 hover:bg-slate-50 rounded-full"><X className="w-6 h-6 text-slate-300" /></button></div>
+          <div className="bg-white rounded-[2.5rem] p-8 max-w-xs w-full shadow-2xl">
              <form onSubmit={(e) => { e.preventDefault(); if(password==='1234'){ setIsAdmin(true); setShowLogin(false); setPassword(''); } else alert('PIN ไม่ถูกต้อง'); }} className="space-y-6">
-               <input type="password" value={password} onChange={e=>setPassword(e.target.value)} autoFocus className="w-full p-4 bg-slate-50 rounded-2xl text-center font-mono text-2xl outline-none ring-4 ring-slate-100 focus:ring-violet-100" placeholder="****" />
-               <div className="flex items-start gap-2 text-[10px] text-slate-400 leading-relaxed"><Info className="w-3 h-3 shrink-0" /> เจ้าของระบบกรุณากรอก PIN 4 หลักเพื่อเข้าถึงอำนาจการควบคุม</div>
-               <button type="submit" className="w-full bg-slate-800 text-white py-4 rounded-2xl font-bold shadow-lg shadow-slate-100">Unlock System</button>
+               <input type="password" value={password} onChange={e=>setPassword(e.target.value)} autoFocus className="w-full p-4 bg-slate-50 rounded-2xl text-center font-mono text-2xl outline-none" placeholder="****" />
+               <button type="submit" className="w-full bg-slate-800 text-white py-4 rounded-2xl font-bold">Unlock Admin</button>
+               <button type="button" onClick={()=>setShowLogin(false)} className="w-full text-slate-400 text-sm">ยกเลิก</button>
              </form>
           </div>
         </div>
       )}
-
-      <footer className="bg-white border-t border-slate-100 py-4 text-center text-[10px] font-bold text-slate-400 tracking-[0.3em] uppercase">
-        Developed by Codelex.PHR &middot; System Owner Authority Enabled
-      </footer>
     </div>
   );
 };

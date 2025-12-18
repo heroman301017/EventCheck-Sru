@@ -48,7 +48,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats }) => {
             สัดส่วนสถานะปัจจุบัน
           </h3>
           <div style={{ width: '100%', height: 300 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={256}>
               <PieChart>
                 <Pie 
                   data={pieData} 
@@ -81,7 +81,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats }) => {
             ความคืบหน้าการเข้าร่วม
           </h3>
           <div style={{ width: '100%', height: 300 }}>
-             <ResponsiveContainer width="100%" height="100%">
+             <ResponsiveContainer width="100%" height={256}>
                <BarChart data={pieData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                   <XAxis type="number" hide />
