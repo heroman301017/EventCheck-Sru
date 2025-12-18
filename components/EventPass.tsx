@@ -1,4 +1,3 @@
-
 import React, { useRef } from 'react';
 import { User, Event } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
@@ -16,11 +15,26 @@ export const EventPass: React.FC<Props> = ({ user, event, onBack }) => {
 
   const downloadImage = async () => {
     if (!cardRef.current) return;
-    const dataUrl = await toPng(cardRef.current, { backgroundColor: '#ffffff' });
-    const link = document.createElement('a');
-    link.download = `event-pass-${user.studentId}.png`;
-    link.href = dataUrl;
-    link.click();
+    try {
+      // Ensure fonts are ready before capturing
+      if (document.fonts) {
+        await document.fonts.ready;
+      }
+
+      const dataUrl = await toPng(cardRef.current, { 
+        backgroundColor: '#ffffff',
+        cacheBust: true,
+        style: {
+          fontFamily: "'Sarabun', sans-serif"
+        }
+      });
+      const link = document.createElement('a');
+      link.download = `event-pass-${user.studentId}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error('Failed to capture pass image', err);
+    }
   };
 
   return (

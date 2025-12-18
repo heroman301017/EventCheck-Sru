@@ -7,6 +7,12 @@ export interface Event {
   description: string;
 }
 
+export interface SystemSettings {
+  isRegistrationOpen: boolean;
+  isScanningOpen: boolean;
+  allowPublicDashboard: boolean;
+}
+
 export interface User {
   id: number;
   studentId: string;

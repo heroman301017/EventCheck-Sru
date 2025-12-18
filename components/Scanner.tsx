@@ -28,7 +28,7 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan }) => {
     if (lastScanResult.status === 'success' && lastScanResult.user && autoSave && proofRef.current) {
       const timer = setTimeout(() => {
         handleSaveProof(lastScanResult.user!, lastScanResult.type);
-      }, 500);
+      }, 800); // Increased delay to ensure font is applied
       return () => clearTimeout(timer);
     }
   }, [lastScanResult, autoSave]);
@@ -36,8 +36,20 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan }) => {
   const handleSaveProof = async (user: User, type?: 'in' | 'out') => {
     if (!proofRef.current) return;
     try {
+      // Ensure fonts are ready before capturing
+      if (document.fonts) {
+        await document.fonts.ready;
+      }
+      
       const typeText = type === 'out' ? 'out' : 'in';
-      const dataUrl = await toPng(proofRef.current, { cacheBust: true, quality: 0.95, backgroundColor: '#fff' });
+      const dataUrl = await toPng(proofRef.current, { 
+        cacheBust: true, 
+        quality: 0.95, 
+        backgroundColor: '#fff',
+        style: {
+          fontFamily: "'Sarabun', sans-serif"
+        }
+      });
       const link = document.createElement('a');
       link.download = `proof-${typeText}-${user.studentId}.png`;
       link.href = dataUrl;
