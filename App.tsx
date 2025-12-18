@@ -23,6 +23,7 @@ import { ConfirmationModal } from './components/ConfirmationModal';
 const API_URL = "https://script.google.com/macros/s/AKfycbzkyagLeBoBZbzEEe0lsd0G1JpYEJ4QDdc9FijWEps9zMZ6gw7pkkGbQQewgO8BjjA/exec";
 
 const App: React.FC = () => {
+  // กำหนด Default Tab เป็น Home ก่อนเพื่อรอผลจาก API Settings
   const [activeTab, setActiveTab] = useState<'home' | 'overview' | 'scan' | 'register' | 'events'>('home');
   const [users, setUsers] = useState<User[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
@@ -33,6 +34,7 @@ const App: React.FC = () => {
   });
   
   const [isLoading, setIsLoading] = useState(true);
+  const [hasRouted, setHasRouted] = useState(false); // Track if we've handled the initial routing
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [eventForRegistration, setEventForRegistration] = useState<Event | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -61,16 +63,31 @@ const App: React.FC = () => {
       const data = await response.json();
       
       const fetchedEvents = data.events || [];
-      setUsers(data.users || []);
-      setEvents(fetchedEvents);
-      setSystemSettings(data.settings || {
+      const fetchedSettings = data.settings || {
         isRegistrationOpen: true,
         isScanningOpen: true,
         allowPublicDashboard: true
-      });
+      };
+
+      setUsers(data.users || []);
+      setEvents(fetchedEvents);
+      setSystemSettings(fetchedSettings);
       
+      // เลือก Event แรกโดยอัตโนมัติ
       if (fetchedEvents.length > 0 && !selectedEventId) {
         setSelectedEventId(fetchedEvents[0].id);
+      }
+
+      // ตรรกะการเลือกหน้าแรก: สแกน (ถ้าเปิด) -> ลงทะเบียน (ถ้าสแกนปิด) -> หน้าหลัก
+      if (!hasRouted) {
+        if (fetchedSettings.isScanningOpen) {
+          setActiveTab('scan');
+        } else if (fetchedSettings.isRegistrationOpen) {
+          setActiveTab('register');
+        } else {
+          setActiveTab('home');
+        }
+        setHasRouted(true);
       }
     } catch (error) {
       console.error("Fetch Error:", error);
@@ -283,7 +300,7 @@ const App: React.FC = () => {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
         <Loader2 className="w-12 h-12 text-violet-500 animate-spin" />
-        <p className="font-bold text-slate-400 animate-pulse">กำลังซิงค์ข้อมูลกับ Google Sheets...</p>
+        <p className="font-bold text-slate-400 animate-pulse">กำลังเตรียมข้อมูลระบบ...</p>
       </div>
     );
   }
