@@ -42,10 +42,16 @@ const App: React.FC = () => {
     try {
       const response = await fetch(API_URL);
       const data = await response.json();
-      setUsers(data.users);
-      setEvents(data.events);
-      setSystemSettings(data.settings);
-      if (!selectedEventId && data.events.length > 0) {
+      setUsers(data.users || []);
+      setEvents(data.events || []);
+      setSystemSettings(data.settings || {
+        isRegistrationOpen: true,
+        isScanningOpen: true,
+        allowPublicDashboard: true
+      });
+      
+      // เลือก Event แรกเป็น Default ถ้ายังไม่มีการเลือก
+      if (!selectedEventId && data.events && data.events.length > 0) {
         setSelectedEventId(data.events[0].id);
       }
     } catch (error) {
@@ -81,12 +87,32 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      // ดึงข้อมูลใหม่เพื่อสะท้อนสถานะล่าสุด
       fetchData();
     } catch (error) {
       console.error("Post Action Error:", error);
     }
   };
 
+  // --- Handlers for Events ---
+  const handleSaveEvent = async (event: Event) => {
+    // Optimistic UI update
+    setEvents(prev => {
+      const exists = prev.find(e => e.id === event.id);
+      if (exists) return prev.map(e => e.id === event.id ? event : e);
+      return [...prev, event];
+    });
+    await postAction({ action: "saveEvent", event });
+  };
+
+  const handleDeleteEvent = async (id: string) => {
+    if(!confirm('ยืนยันการลบกิจกรรม? ข้อมูลผู้เข้าร่วมที่เกี่ยวข้องอาจได้รับผลกระทบ')) return;
+    setEvents(prev => prev.filter(e => e.id !== id));
+    if (selectedEventId === id) setSelectedEventId('');
+    await postAction({ action: "deleteEvent", id });
+  };
+
+  // --- Handlers for Users ---
   const handleCheckIn = async (scannedValue: string) => {
     if (!systemSettings.isScanningOpen && !isAdmin) return;
     const user = currentEventUsers.find(u => u.phone === scannedValue || u.studentId === scannedValue);
@@ -138,19 +164,13 @@ const App: React.FC = () => {
 
   const handleUpdateUser = async (user: User) => {
     setUsers(prev => prev.map(u => u.id === user.id ? user : u));
-    await postAction({
-      action: "updateUser",
-      user: user
-    });
+    await postAction({ action: "updateUser", user });
   };
 
   const handleDeleteUser = async (id: number) => {
     if(!confirm('ยืนยันการลบรายชื่อ?')) return;
     setUsers(prev => prev.filter(u => u.id !== id));
-    await postAction({
-      action: "deleteUser",
-      id: id
-    });
+    await postAction({ action: "deleteUser", id });
   };
 
   const handleImportUsers = async (newUsers: any[]) => {
@@ -166,21 +186,13 @@ const App: React.FC = () => {
     }));
     
     setUsers(prev => [...prev, ...formatted]);
-
-    await postAction({
-      action: "importUsers",
-      users: formatted
-    });
+    await postAction({ action: "importUsers", users: formatted });
   };
 
   const handleToggleSetting = async (key: keyof SystemSettings) => {
     const newValue = !systemSettings[key];
     setSystemSettings({ ...systemSettings, [key]: newValue });
-    await postAction({
-      action: "updateSettings",
-      key,
-      value: newValue
-    });
+    await postAction({ action: "updateSettings", key, value: newValue });
   };
 
   const handleResetRound = async () => {
@@ -268,7 +280,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {activeTab !== 'events' && (
+      {activeTab !== 'events' && events.length > 0 && (
         <div className="bg-violet-600 text-white py-2 shadow-inner">
            <div className="max-w-7xl mx-auto px-4 flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
               <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">Event:</span>
@@ -280,47 +292,67 @@ const App: React.FC = () => {
       )}
 
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6 overflow-y-auto">
-        {activeTab === 'register' && (
-          <div className="w-full max-w-2xl mx-auto">
-            {!registeredUser ? <RegistrationForm eventName={currentEvent.name} onRegister={handleRegister} /> : <EventPass user={registeredUser} event={currentEvent} onBack={() => setRegisteredUser(null)} />}
+        {events.length === 0 && activeTab !== 'events' ? (
+          <div className="h-[60vh] flex flex-col items-center justify-center text-slate-400 space-y-4">
+            <Calendar className="w-16 h-16 opacity-20" />
+            <p>ยังไม่มีกิจกรรมในระบบ โปรดแจ้งผู้ดูแลระบบ</p>
+            {isAdmin && <button onClick={() => setActiveTab('events')} className="text-violet-500 font-bold">ไปยังเมนูจัดการกิจกรรม</button>}
           </div>
-        )}
+        ) : (
+          <>
+            {activeTab === 'register' && (
+              <div className="w-full max-w-2xl mx-auto">
+                {!registeredUser ? <RegistrationForm eventName={currentEvent.name} onRegister={handleRegister} /> : <EventPass user={registeredUser} event={currentEvent} onBack={() => setRegisteredUser(null)} />}
+              </div>
+            )}
 
-        {activeTab === 'scan' && <Scanner users={currentEventUsers} onScan={handleCheckIn} />}
+            {activeTab === 'scan' && <Scanner users={currentEventUsers} onScan={handleCheckIn} />}
 
-        {activeTab === 'overview' && (
-          <div className="space-y-8 pb-10">
-            <div className="flex justify-between items-start">
-               <div><h2 className="text-2xl font-bold text-slate-800">{currentEvent.name}</h2><p className="text-slate-500 text-sm">{currentEvent.location} &bull; {currentEvent.date}</p></div>
-               {isAdmin && <button onClick={handleResetRound} className="p-2.5 bg-rose-50 text-rose-500 rounded-xl"><RefreshCw className="w-5 h-5" /></button>}
-            </div>
-            <Dashboard stats={stats} />
-            <UserList 
-              users={currentEventUsers} 
-              isEditable={isAdmin} 
-              onAddUser={(name, phone) => { handleRegister({ name, phone }); }} 
-              onUpdateUser={handleUpdateUser} 
-              onDeleteUser={handleDeleteUser} 
-              onImportUsers={handleImportUsers} 
-              onExportCSV={exportCSV} 
-              onExportPDF={exportPDF} 
-            />
-          </div>
+            {activeTab === 'overview' && (
+              <div className="space-y-8 pb-10">
+                <div className="flex justify-between items-start">
+                   <div><h2 className="text-2xl font-bold text-slate-800">{currentEvent.name}</h2><p className="text-slate-500 text-sm">{currentEvent.location} &bull; {currentEvent.date}</p></div>
+                   {isAdmin && <button onClick={handleResetRound} className="p-2.5 bg-rose-50 text-rose-500 rounded-xl" title="Reset Check-in Status"><RefreshCw className="w-5 h-5" /></button>}
+                </div>
+                <Dashboard stats={stats} />
+                <UserList 
+                  users={currentEventUsers} 
+                  isEditable={isAdmin} 
+                  onAddUser={(name, phone) => { handleRegister({ name, phone }); }} 
+                  onUpdateUser={handleUpdateUser} 
+                  onDeleteUser={handleDeleteUser} 
+                  onImportUsers={handleImportUsers} 
+                  onExportCSV={exportCSV} 
+                  onExportPDF={exportPDF} 
+                />
+              </div>
+            )}
+          </>
         )}
 
         {activeTab === 'events' && isAdmin && (
           <div className="space-y-10">
+            <EventManager 
+              events={events} 
+              onSave={handleSaveEvent} 
+              onDelete={handleDeleteEvent} 
+            />
+
             <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-rose-100">
-              <h2 className="text-xl font-bold text-slate-800 mb-6">Developer Control Panel (Sheets Sync)</h2>
+              <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                <Settings className="w-6 h-6 text-violet-500" />
+                System Preferences
+              </h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                  {['isRegistrationOpen', 'isScanningOpen', 'allowPublicDashboard'].map((key) => (
-                   <div key={key} className="bg-slate-50 p-6 rounded-3xl flex items-center justify-between">
-                      <span className="font-bold text-slate-700">{key}</span>
+                   <div key={key} className="bg-slate-50 p-6 rounded-3xl flex flex-col gap-3">
+                      <span className="font-bold text-slate-700 text-sm">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
                       <button 
                         onClick={() => handleToggleSetting(key as keyof SystemSettings)}
-                        className={`w-14 h-8 rounded-full p-1 transition-colors ${systemSettings[key as keyof SystemSettings] ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                        className={`w-full h-12 rounded-2xl p-1 transition-colors flex items-center px-4 justify-between ${systemSettings[key as keyof SystemSettings] ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}
                       >
-                        <div className={`w-6 h-6 bg-white rounded-full transform transition-transform ${systemSettings[key as keyof SystemSettings] ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                        <span className="font-bold">{systemSettings[key as keyof SystemSettings] ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}</span>
+                        <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform ${systemSettings[key as keyof SystemSettings] ? 'translate-x-0' : '-translate-x-0'}`}></div>
                       </button>
                    </div>
                  ))}
@@ -333,10 +365,15 @@ const App: React.FC = () => {
       {showLogin && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-[2.5rem] p-8 max-w-xs w-full shadow-2xl">
-             <form onSubmit={(e) => { e.preventDefault(); if(password==='1234'){ setIsAdmin(true); setShowLogin(false); setPassword(''); } else alert('PIN ไม่ถูกต้อง'); }} className="space-y-6">
-               <input type="password" value={password} onChange={e=>setPassword(e.target.value)} autoFocus className="w-full p-4 bg-slate-50 rounded-2xl text-center font-mono text-2xl outline-none" placeholder="****" />
-               <button type="submit" className="w-full bg-slate-800 text-white py-4 rounded-2xl font-bold">Unlock Admin</button>
-               <button type="button" onClick={()=>setShowLogin(false)} className="w-full text-slate-400 text-sm">ยกเลิก</button>
+             <div className="text-center mb-6">
+                <Lock className="w-12 h-12 text-violet-500 mx-auto mb-2" />
+                <h3 className="text-xl font-bold text-slate-800">Admin Login</h3>
+                <p className="text-slate-400 text-sm">กรุณาระบุรหัสผ่านเพื่อเข้าถึงระบบจัดการ</p>
+             </div>
+             <form onSubmit={(e) => { e.preventDefault(); if(password==='1234'){ setIsAdmin(true); setShowLogin(false); setPassword(''); } else alert('PIN ไม่ถูกต้อง'); }} className="space-y-4">
+               <input type="password" value={password} onChange={e=>setPassword(e.target.value)} autoFocus className="w-full p-4 bg-slate-50 rounded-2xl text-center font-mono text-2xl outline-none focus:ring-4 focus:ring-violet-100" placeholder="****" />
+               <button type="submit" className="w-full bg-slate-800 text-white py-4 rounded-2xl font-bold hover:bg-slate-700 active:scale-95 transition-all">Unlock Admin</button>
+               <button type="button" onClick={()=>setShowLogin(false)} className="w-full text-slate-400 text-sm font-medium">ยกเลิก</button>
              </form>
           </div>
         </div>
