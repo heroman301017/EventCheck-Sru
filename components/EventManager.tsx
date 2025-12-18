@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { Event } from '../types';
+import { formatThaiDate } from '../constants';
 import { Plus, Edit3, Trash2, Save, X, Calendar, MapPin, AlignLeft } from 'lucide-react';
 
 interface Props {
@@ -40,7 +41,7 @@ export const EventManager: React.FC<Props> = ({ events, onSave, onDelete }) => {
             <div className="space-y-1">
               <h3 className="font-bold text-slate-800 text-lg">{event.name}</h3>
               <div className="flex items-center gap-3 text-xs text-slate-400 font-medium">
-                <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> {event.date}</span>
+                <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> {formatThaiDate(event.date)}</span>
                 <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> {event.location}</span>
               </div>
               <p className="text-sm text-slate-500 line-clamp-2 mt-2">{event.description}</p>

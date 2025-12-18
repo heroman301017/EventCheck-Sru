@@ -8,6 +8,21 @@ export const normalizePhone = (phone: string) => {
     .replace(/-/g, '').replace(/\s/g, '');
 };
 
+export const formatThaiDate = (dateStr: string) => {
+  if (!dateStr) return '-';
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    return new Intl.DateTimeFormat('th-TH', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }).format(date);
+  } catch (e) {
+    return dateStr;
+  }
+};
+
 export const INITIAL_EVENTS: Event[] = [
   {
     id: 'e1',

@@ -1,23 +1,25 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { User, Stats, Event, SystemSettings } from './types';
-import { INITIAL_USERS, INITIAL_EVENTS, normalizePhone } from './constants';
+import { INITIAL_USERS, INITIAL_EVENTS, normalizePhone, formatThaiDate } from './constants';
 import { Dashboard } from './components/Dashboard';
 import { UserList } from './components/UserList';
 import { Scanner } from './components/Scanner';
 import { 
   LayoutDashboard, ScanLine, QrCode, Lock, Unlock, RefreshCw, 
   Trash2, ShieldCheck, X, Clock, AlertTriangle, Calendar, 
-  MapPin, Settings, Power, Info, RotateCcw, Loader2
+  MapPin, Settings, Power, Info, RotateCcw, Loader2, ChevronRight
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { RegistrationForm } from './components/RegistrationForm';
 import { EventPass } from './components/EventPass';
 import { EventManager } from './components/EventManager';
+import { EventShowcase } from './components/EventShowcase';
+import { ConfirmationModal } from './components/ConfirmationModal';
 
-// *** ใส่ URL ของ Google Apps Script ที่ Deploy แล้วที่นี่ ***
-const API_URL = "https://script.google.com/macros/s/AKfycbw5DmFpm8IfR9fbBf2ddHQj_Gsqv0QF2FVCZXa8dywx9PPPRv5CYYChXJNkDAVF7Lk/exec";
+// *** สำคัญ: ตรวจสอบ URL ของ Google Apps Script ให้ถูกต้อง ***
+const API_URL = "https://script.google.com/macros/s/AKfycbzkyagLeBoBZbzEEe0lsd0G1JpYEJ4QDdc9FijWEps9zMZ6gw7pkkGbQQewgO8BjjA/exec";
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'scan' | 'register' | 'events'>('register');
@@ -31,28 +33,43 @@ const App: React.FC = () => {
   
   const [isLoading, setIsLoading] = useState(true);
   const [selectedEventId, setSelectedEventId] = useState<string>('');
+  const [eventForRegistration, setEventForRegistration] = useState<Event | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [password, setPassword] = useState('');
   const [registeredUser, setRegisteredUser] = useState<User | null>(null);
 
-  // Load Data from Google Sheets
+  // Confirmation Modal State
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant?: 'danger' | 'warning';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(API_URL);
+      const response = await fetch(`${API_URL}?t=${Date.now()}`);
       const data = await response.json();
+      
+      const fetchedEvents = data.events || [];
       setUsers(data.users || []);
-      setEvents(data.events || []);
+      setEvents(fetchedEvents);
       setSystemSettings(data.settings || {
         isRegistrationOpen: true,
         isScanningOpen: true,
         allowPublicDashboard: true
       });
       
-      // เลือก Event แรกเป็น Default ถ้ายังไม่มีการเลือก
-      if (!selectedEventId && data.events && data.events.length > 0) {
-        setSelectedEventId(data.events[0].id);
+      if (fetchedEvents.length > 0 && !selectedEventId) {
+        setSelectedEventId(fetchedEvents[0].id);
       }
     } catch (error) {
       console.error("Fetch Error:", error);
@@ -84,35 +101,39 @@ const App: React.FC = () => {
       await fetch(API_URL, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
       });
-      // ดึงข้อมูลใหม่เพื่อสะท้อนสถานะล่าสุด
-      fetchData();
+      setTimeout(() => fetchData(), 1000);
     } catch (error) {
       console.error("Post Action Error:", error);
     }
   };
 
-  // --- Handlers for Events ---
   const handleSaveEvent = async (event: Event) => {
-    // Optimistic UI update
     setEvents(prev => {
       const exists = prev.find(e => e.id === event.id);
       if (exists) return prev.map(e => e.id === event.id ? event : e);
       return [...prev, event];
     });
+    if (!selectedEventId) setSelectedEventId(event.id);
     await postAction({ action: "saveEvent", event });
   };
 
-  const handleDeleteEvent = async (id: string) => {
-    if(!confirm('ยืนยันการลบกิจกรรม? ข้อมูลผู้เข้าร่วมที่เกี่ยวข้องอาจได้รับผลกระทบ')) return;
-    setEvents(prev => prev.filter(e => e.id !== id));
-    if (selectedEventId === id) setSelectedEventId('');
-    await postAction({ action: "deleteEvent", id });
+  const handleDeleteEvent = (id: string) => {
+    setConfirmState({
+      isOpen: true,
+      title: 'ลบกิจกรรม?',
+      message: 'ยืนยันการลบกิจกรรมนี้? ข้อมูลผู้เข้าร่วมที่เกี่ยวข้องทั้งหมดจะไม่ปรากฏในมุมมองนี้อีก',
+      variant: 'danger',
+      onConfirm: async () => {
+        setEvents(prev => prev.filter(e => e.id !== id));
+        if (selectedEventId === id) setSelectedEventId('');
+        await postAction({ action: "deleteEvent", id });
+      }
+    });
   };
 
-  // --- Handlers for Users ---
   const handleCheckIn = async (scannedValue: string) => {
     if (!systemSettings.isScanningOpen && !isAdmin) return;
     const user = currentEventUsers.find(u => u.phone === scannedValue || u.studentId === scannedValue);
@@ -142,6 +163,11 @@ const App: React.FC = () => {
 
   const handleRegister = async (userData: Partial<User>) => {
     if (!systemSettings.isRegistrationOpen && !isAdmin) return;
+    const targetEventId = eventForRegistration?.id || selectedEventId;
+    if (!targetEventId) {
+      alert('กรุณาเลือกกิจกรรมก่อนลงทะเบียน');
+      return;
+    }
     const newUser: User = {
       id: Date.now(),
       studentId: userData.studentId || '',
@@ -149,17 +175,14 @@ const App: React.FC = () => {
       phone: normalizePhone(userData.phone || ''),
       faculty: userData.faculty || '-',
       major: userData.major || '-',
-      eventId: selectedEventId,
+      eventId: targetEventId,
       status: 'pending'
     };
     
     setUsers(prev => [...prev, newUser]);
     setRegisteredUser(newUser);
 
-    await postAction({
-      action: "register",
-      user: newUser
-    });
+    await postAction({ action: "register", user: newUser });
   };
 
   const handleUpdateUser = async (user: User) => {
@@ -167,10 +190,17 @@ const App: React.FC = () => {
     await postAction({ action: "updateUser", user });
   };
 
-  const handleDeleteUser = async (id: number) => {
-    if(!confirm('ยืนยันการลบรายชื่อ?')) return;
-    setUsers(prev => prev.filter(u => u.id !== id));
-    await postAction({ action: "deleteUser", id });
+  const handleDeleteUser = (id: number) => {
+    setConfirmState({
+      isOpen: true,
+      title: 'ลบรายชื่อ?',
+      message: 'คุณแน่ใจหรือไม่ว่าต้องการลบรายชื่อผู้เข้าร่วมคนนี้ออกจากระบบ?',
+      variant: 'danger',
+      onConfirm: async () => {
+        setUsers(prev => prev.filter(u => u.id !== id));
+        await postAction({ action: "deleteUser", id });
+      }
+    });
   };
 
   const handleImportUsers = async (newUsers: any[]) => {
@@ -195,11 +225,17 @@ const App: React.FC = () => {
     await postAction({ action: "updateSettings", key, value: newValue });
   };
 
-  const handleResetRound = async () => {
-    if(confirm('ยืนยันการจบรอบ? ข้อมูลใน Google Sheets จะถูกรีเซ็ตสถานะเป็น "รอ"')) {
-      setUsers(prev => prev.map(u => u.eventId === selectedEventId ? {...u, status:'pending', checkInTime:undefined, checkOutTime:undefined} : u));
-      await postAction({ action: "resetRound", eventId: selectedEventId });
-    }
+  const handleResetRound = () => {
+    setConfirmState({
+      isOpen: true,
+      title: 'จบรอบกิจกรรม?',
+      message: 'การจบรอบจะรีเซ็ตสถานะการเช็คอินทั้งหมดในกิจกรรมนี้ให้กลับเป็น "รอ" คุณต้องการดำเนินการต่อหรือไม่?',
+      variant: 'warning',
+      onConfirm: async () => {
+        setUsers(prev => prev.map(u => u.eventId === selectedEventId ? {...u, status:'pending', checkInTime:undefined, checkOutTime:undefined} : u));
+        await postAction({ action: "resetRound", eventId: selectedEventId });
+      }
+    });
   };
 
   const exportCSV = () => {
@@ -242,11 +278,11 @@ const App: React.FC = () => {
     } catch (e) { alert('PDF Error'); }
   };
 
-  if (isLoading) {
+  if (isLoading && events.length === 0) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
         <Loader2 className="w-12 h-12 text-violet-500 animate-spin" />
-        <p className="font-bold text-slate-400 animate-pulse">กำลังเชื่อมต่อฐานข้อมูล Google Sheets...</p>
+        <p className="font-bold text-slate-400 animate-pulse">กำลังซิงค์ข้อมูลกับ Google Sheets...</p>
       </div>
     );
   }
@@ -263,7 +299,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2">
             <nav className="flex bg-slate-100 p-1 rounded-2xl">
               {(systemSettings.isRegistrationOpen || isAdmin) && (
-                <button onClick={() => setActiveTab('register')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'register' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}>สมัคร</button>
+                <button onClick={() => { setActiveTab('register'); setEventForRegistration(null); setRegisteredUser(null); }} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'register' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}>สมัคร</button>
               )}
               {(systemSettings.isScanningOpen || isAdmin) && (
                 <button onClick={() => setActiveTab('scan')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'scan' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}>สแกน</button>
@@ -280,7 +316,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {activeTab !== 'events' && events.length > 0 && (
+      {activeTab !== 'events' && activeTab !== 'register' && events.length > 0 && (
         <div className="bg-violet-600 text-white py-2 shadow-inner">
            <div className="max-w-7xl mx-auto px-4 flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
               <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">Event:</span>
@@ -296,13 +332,38 @@ const App: React.FC = () => {
           <div className="h-[60vh] flex flex-col items-center justify-center text-slate-400 space-y-4">
             <Calendar className="w-16 h-16 opacity-20" />
             <p>ยังไม่มีกิจกรรมในระบบ โปรดแจ้งผู้ดูแลระบบ</p>
-            {isAdmin && <button onClick={() => setActiveTab('events')} className="text-violet-500 font-bold">ไปยังเมนูจัดการกิจกรรม</button>}
+            {isAdmin && <button onClick={() => setActiveTab('events')} className="bg-violet-500 text-white px-6 py-2 rounded-xl font-bold mt-2">ไปยังเมนูจัดการกิจกรรม</button>}
           </div>
         ) : (
           <>
             {activeTab === 'register' && (
-              <div className="w-full max-w-2xl mx-auto">
-                {!registeredUser ? <RegistrationForm eventName={currentEvent.name} onRegister={handleRegister} /> : <EventPass user={registeredUser} event={currentEvent} onBack={() => setRegisteredUser(null)} />}
+              <div className="w-full max-w-4xl mx-auto">
+                {!eventForRegistration && !registeredUser && (
+                  <div className="space-y-8">
+                    <div className="text-center space-y-2">
+                       <h2 className="text-3xl font-bold text-slate-800">เลือกกิจกรรมที่น่าสนใจ</h2>
+                       <p className="text-slate-500">คลิกที่กิจกรรมเพื่อดูรายละเอียดและลงทะเบียนล่วงหน้า</p>
+                    </div>
+                    <EventShowcase events={events} onSelect={setEventForRegistration} />
+                  </div>
+                )}
+                
+                {eventForRegistration && !registeredUser && (
+                  <div className="w-full max-w-2xl mx-auto">
+                    <div className="flex justify-start mb-6">
+                      <button onClick={() => setEventForRegistration(null)} className="flex items-center gap-2 text-slate-400 hover:text-violet-500 font-bold transition-all">
+                        <ChevronRight className="w-5 h-5 rotate-180" /> ย้อนกลับไปเลือกกิจกรรม
+                      </button>
+                    </div>
+                    <RegistrationForm eventName={eventForRegistration.name} onRegister={handleRegister} />
+                  </div>
+                )}
+
+                {registeredUser && (
+                  <div className="w-full max-w-2xl mx-auto">
+                    <EventPass user={registeredUser} event={eventForRegistration || currentEvent} onBack={() => { setRegisteredUser(null); setEventForRegistration(null); }} />
+                  </div>
+                )}
               </div>
             )}
 
@@ -311,7 +372,10 @@ const App: React.FC = () => {
             {activeTab === 'overview' && (
               <div className="space-y-8 pb-10">
                 <div className="flex justify-between items-start">
-                   <div><h2 className="text-2xl font-bold text-slate-800">{currentEvent.name}</h2><p className="text-slate-500 text-sm">{currentEvent.location} &bull; {currentEvent.date}</p></div>
+                   <div>
+                    <h2 className="text-2xl font-bold text-slate-800">{currentEvent.name}</h2>
+                    <p className="text-slate-500 text-sm">{currentEvent.location} &bull; {formatThaiDate(currentEvent.date)}</p>
+                   </div>
                    {isAdmin && <button onClick={handleResetRound} className="p-2.5 bg-rose-50 text-rose-500 rounded-xl" title="Reset Check-in Status"><RefreshCw className="w-5 h-5" /></button>}
                 </div>
                 <Dashboard stats={stats} />
@@ -361,6 +425,16 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+
+      {/* Reusable Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+        variant={confirmState.variant}
+      />
 
       {showLogin && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">

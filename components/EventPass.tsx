@@ -1,5 +1,7 @@
+
 import React, { useRef } from 'react';
 import { User, Event } from '../types';
+import { formatThaiDate } from '../constants';
 import { QRCodeSVG } from 'qrcode.react';
 import { toPng } from 'html-to-image';
 import { Download, ChevronLeft, Award, GraduationCap, MapPin, Calendar } from 'lucide-react';
@@ -85,7 +87,7 @@ export const EventPass: React.FC<Props> = ({ user, event, onBack }) => {
              <div className="bg-slate-50 p-4 rounded-2xl flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2 text-slate-500">
                   <Calendar className="w-3.5 h-3.5" />
-                  <span>{event.date}</span>
+                  <span>{formatThaiDate(event.date)}</span>
                 </div>
                 <div className="flex items-center gap-2 text-slate-500">
                   <MapPin className="w-3.5 h-3.5" />
