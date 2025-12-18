@@ -6,9 +6,10 @@ import { toPng } from 'html-to-image';
 interface ScannerProps {
   users: User[];
   onScan: (id: string) => void;
+  pauseFocus?: boolean;
 }
 
-export const Scanner: React.FC<ScannerProps> = ({ users, onScan }) => {
+export const Scanner: React.FC<ScannerProps> = ({ users, onScan, pauseFocus = false }) => {
   const [input, setInput] = useState('');
   const [lastScanResult, setLastScanResult] = useState<{ status: 'success' | 'error' | 'idle'; message: string; subMessage?: string; user?: User; type?: 'in' | 'out' }>({ status: 'idle', message: '' });
   const [autoSave, setAutoSave] = useState(true);
@@ -16,19 +17,21 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan }) => {
   const proofRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (pauseFocus) return;
+
     const focusInterval = setInterval(() => {
       if (document.activeElement !== inputRef.current && lastScanResult.status === 'idle') {
         inputRef.current?.focus();
       }
     }, 1000);
     return () => clearInterval(focusInterval);
-  }, [lastScanResult.status]);
+  }, [lastScanResult.status, pauseFocus]);
 
   useEffect(() => {
     if (lastScanResult.status === 'success' && lastScanResult.user && autoSave && proofRef.current) {
       const timer = setTimeout(() => {
         handleSaveProof(lastScanResult.user!, lastScanResult.type);
-      }, 800); // Increased delay to ensure font is applied
+      }, 800);
       return () => clearTimeout(timer);
     }
   }, [lastScanResult, autoSave]);
@@ -36,7 +39,6 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan }) => {
   const handleSaveProof = async (user: User, type?: 'in' | 'out') => {
     if (!proofRef.current) return;
     try {
-      // Ensure fonts are ready before capturing
       if (document.fonts) {
         await document.fonts.ready;
       }
@@ -69,7 +71,6 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan }) => {
     if (!input.trim()) return;
 
     const normalizedInput = input.trim();
-    // Search by Phone OR Student ID
     const user = users.find(u => u.phone === normalizedInput || u.studentId === normalizedInput);
 
     if (user) {
@@ -165,7 +166,6 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan }) => {
         </div>
       </form>
 
-      {/* Proof Card Render Hidden */}
       {lastScanResult.status === 'success' && lastScanResult.user && (
         <div className="absolute -left-[9999px] top-0">
           <div ref={proofRef} className="w-[400px] bg-white p-8 border-[6px] border-violet-100 rounded-3xl flex flex-col items-center text-center">
