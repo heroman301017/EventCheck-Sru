@@ -168,16 +168,38 @@ const App: React.FC = () => {
   const exportPDF = async () => {
     try {
       const doc = new jsPDF();
-      const fontUrl = 'https://cdn.jsdelivr.net/gh/nokstatic/public-fonts@master/THSarabunNew/THSarabunNew.ttf';
       
-      const response = await fetch(fontUrl);
-      if (!response.ok) throw new Error('Font download failed');
+      // Use the most reliable Google Fonts CDN link for Sarabun Regular
+      const fontUrls = [
+        'https://fonts.gstatic.com/s/sarabun/v13/dtm66pU_S8fS66tI_8B6T6Y.ttf', // Google Fonts direct CDN
+        'https://cdn.jsdelivr.net/gh/googlefonts/sarabun@master/fonts/Sarabun-Regular.ttf',
+        'https://cdn.jsdelivr.net/gh/nokstatic/public-fonts@master/THSarabunNew/THSarabunNew.ttf'
+      ];
       
-      const buffer = await response.arrayBuffer();
-      const base64Font = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-      doc.addFileToVFS('THSarabunNew.ttf', base64Font);
-      doc.addFont('THSarabunNew.ttf', 'THSarabunNew', 'normal');
-      doc.setFont('THSarabunNew');
+      let fontResponse = null;
+      for (const url of fontUrls) {
+        try {
+          const resp = await fetch(url, { mode: 'cors', cache: 'force-cache' });
+          if (resp.ok) {
+            fontResponse = resp;
+            break;
+          }
+        } catch (e) {
+          console.warn(`Source ${url} failed, trying next...`);
+        }
+      }
+      
+      if (!fontResponse) throw new Error('Font download failed');
+      
+      const buffer = await fontResponse.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      // Modern robust conversion to base64
+      const binary = Array.from(bytes).map(b => String.fromCharCode(b)).join('');
+      const base64Font = btoa(binary);
+
+      doc.addFileToVFS('Sarabun.ttf', base64Font);
+      doc.addFont('Sarabun.ttf', 'Sarabun', 'normal');
+      doc.setFont('Sarabun');
       
       doc.setFontSize(18);
       doc.text(`รายงาน: ${currentEvent.name}`, 105, 15, { align: 'center' });
@@ -186,15 +208,21 @@ const App: React.FC = () => {
 
       autoTable(doc, {
         head: [["รหัสนักศึกษา", "ชื่อ-นามสกุล", "คณะ", "สถานะ", "เวลาเข้า"]],
-        body: currentEventUsers.map(u => [u.studentId || '-', u.name || '-', u.faculty || '-', u.status === 'checked-in' ? 'มาแล้ว' : u.status === 'checked-out' ? 'กลับแล้ว' : 'รอ', u.checkInTime || '-']),
+        body: currentEventUsers.map(u => [
+          u.studentId || '-', 
+          u.name || '-', 
+          u.faculty || '-', 
+          u.status === 'checked-in' ? 'มาแล้ว' : u.status === 'checked-out' ? 'กลับแล้ว' : 'รอ', 
+          u.checkInTime || '-'
+        ]),
         startY: 30,
-        styles: { font: 'THSarabunNew', fontSize: 10 },
+        styles: { font: 'Sarabun', fontSize: 10 },
         headStyles: { fillColor: [124, 58, 237] }
       });
       doc.save(`Report_${currentEvent.name}.pdf`);
     } catch (error) {
-      console.error('PDF Generation Error:', error);
-      alert('ไม่สามารถสร้างไฟล์ PDF ได้ในขณะนี้เนื่องจากปัญหาการโหลดฟอนต์ภาษาไทย โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ตหรือใช้การส่งออกเป็น CSV แทน');
+      console.error('PDF Export Error:', error);
+      alert('เกิดข้อผิดพลาดในการโหลดฟอนต์ภาษาไทยเพื่อสร้าง PDF กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต และลองใหม่อีกครั้ง หรือสามารถใช้งาน Export CSV แทนได้');
     }
   };
 
@@ -304,7 +332,7 @@ const App: React.FC = () => {
 
         {activeTab === 'events' && isAdmin && (
           <div className="space-y-10">
-            {/* Developer Control Panel ตามภาพที่ส่งมา */}
+            {/* Developer Control Panel */}
             <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-rose-100 animate-in slide-in-from-top-4">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-3 bg-rose-100 text-rose-600 rounded-2xl"><ShieldCheck className="w-6 h-6" /></div>
