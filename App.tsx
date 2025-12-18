@@ -1,434 +1,270 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { User, Stats } from './types';
-import { INITIAL_USERS, normalizePhone } from './constants';
+import React, { useState, useMemo, useEffect } from 'react';
+import { User, Stats, Event } from './types';
+import { INITIAL_USERS, INITIAL_EVENTS, normalizePhone } from './constants';
 import { Dashboard } from './components/Dashboard';
 import { UserList } from './components/UserList';
 import { Scanner } from './components/Scanner';
-import { LayoutDashboard, ScanLine, QrCode, Lock, Unlock, RefreshCw, Trash2, ShieldCheck, X, Clock, AlertTriangle } from 'lucide-react';
+import { 
+  LayoutDashboard, ScanLine, QrCode, Lock, Unlock, RefreshCw, 
+  Trash2, ShieldCheck, X, Clock, AlertTriangle, Calendar, 
+  MapPin
+} from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { RegistrationForm } from './components/RegistrationForm';
+import { EventPass } from './components/EventPass';
+import { EventManager } from './components/EventManager';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'scan'>('scan');
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+  const [activeTab, setActiveTab] = useState<'overview' | 'scan' | 'register' | 'events'>('register');
+  const [users, setUsers] = useState<User[]>(() => {
+    const saved = localStorage.getItem('eventcheck_users_v3');
+    return saved ? JSON.parse(saved) : INITIAL_USERS;
+  });
+  const [events, setEvents] = useState<Event[]>(() => {
+    const saved = localStorage.getItem('eventcheck_events_v3');
+    return saved ? JSON.parse(saved) : INITIAL_EVENTS;
+  });
+  const [selectedEventId, setSelectedEventId] = useState<string>(() => events[0]?.id || 'e1');
   
-  // Admin & Security State
   const [isAdmin, setIsAdmin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [password, setPassword] = useState('');
-  const loginInputRef = useRef<HTMLInputElement>(null);
+  const [registeredUser, setRegisteredUser] = useState<User | null>(null);
+  const [demoStatus, setDemoStatus] = useState({ daysLeft: 30, isExpired: false });
 
-  // Demo Mode State
-  const [demoStatus, setDemoStatus] = useState<{ daysLeft: number; isExpired: boolean }>({ daysLeft: 30, isExpired: false });
+  useEffect(() => {
+    localStorage.setItem('eventcheck_users_v3', JSON.stringify(users));
+  }, [users]);
 
-  // Initialize Demo Mode
+  useEffect(() => {
+    localStorage.setItem('eventcheck_events_v3', JSON.stringify(events));
+  }, [events]);
+
   useEffect(() => {
     const DEMO_DAYS = 30;
-    const DEMO_DURATION = DEMO_DAYS * 24 * 60 * 60 * 1000; 
     const STORAGE_KEY = 'eventcheck_demo_start_v1';
-    
-    const storedStart = localStorage.getItem(STORAGE_KEY);
-    let startTime = 0;
-
-    if (storedStart) {
-      startTime = parseInt(storedStart, 10);
-    } else {
+    let startTime = parseInt(localStorage.getItem(STORAGE_KEY) || "0", 10);
+    if (!startTime) {
       startTime = Date.now();
       localStorage.setItem(STORAGE_KEY, startTime.toString());
     }
-    
-    const elapsed = Date.now() - startTime;
-    const remaining = DEMO_DURATION - elapsed;
-    
-    if (remaining <= 0) {
-      setDemoStatus({ daysLeft: 0, isExpired: true });
-    } else {
-      setDemoStatus({ 
-        daysLeft: Math.ceil(remaining / (24 * 60 * 60 * 1000)), 
-        isExpired: false 
-      });
-    }
+    const remaining = (DEMO_DAYS * 24 * 60 * 60 * 1000) - (Date.now() - startTime);
+    setDemoStatus({
+      daysLeft: Math.max(0, Math.ceil(remaining / (24 * 60 * 60 * 1000))),
+      isExpired: remaining <= 0
+    });
   }, []);
 
-  // Auto focus on login input when modal opens
-  useEffect(() => {
-    if (showLogin) {
-      setTimeout(() => {
-        loginInputRef.current?.focus();
-      }, 50);
-    }
-  }, [showLogin]);
+  const currentEvent = useMemo(() => {
+    return events.find(e => e.id === selectedEventId) || events[0] || INITIAL_EVENTS[0];
+  }, [events, selectedEventId]);
 
-  // Calculate Statistics
+  const currentEventUsers = useMemo(() => users.filter(u => u.eventId === selectedEventId), [users, selectedEventId]);
+
   const stats: Stats = useMemo(() => {
-    const total = users.length;
-    const present = users.filter(u => u.status === 'checked-in').length;
-    const returned = users.filter(u => u.status === 'checked-out').length;
-    const checkedIn = present + returned; // Total who have arrived at some point
-    const pending = total - checkedIn;
-    const percentage = total > 0 ? (checkedIn / total) * 100 : 0;
-    return { total, checkedIn, present, returned, pending, percentage };
-  }, [users]);
+    const total = currentEventUsers.length;
+    const present = currentEventUsers.filter(u => u.status === 'checked-in').length;
+    const returned = currentEventUsers.filter(u => u.status === 'checked-out').length;
+    const checkedIn = present + returned;
+    return { total, checkedIn, present, returned, pending: total - checkedIn, percentage: total > 0 ? (checkedIn / total) * 100 : 0 };
+  }, [currentEventUsers]);
 
-  // Handle Scan Logic (Toggle Check-in / Check-out)
   const handleCheckIn = (scannedValue: string) => {
-    setUsers(prevUsers => 
-      prevUsers.map(user => {
-        if (user.phone === scannedValue) {
-          const now = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-          
-          if (user.status === 'pending') {
-            return {
-              ...user,
-              status: 'checked-in',
-              checkInTime: now
-            };
-          } else if (user.status === 'checked-in') {
-            return {
-              ...user,
-              status: 'checked-out',
-              checkOutTime: now
-            };
-          }
-        }
-        return user;
-      })
-    );
+    setUsers(prev => prev.map(u => {
+      if ((u.phone === scannedValue || u.studentId === scannedValue) && u.eventId === selectedEventId) {
+        const now = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+        if (u.status === 'pending') return { ...u, status: 'checked-in', checkInTime: now };
+        if (u.status === 'checked-in') return { ...u, status: 'checked-out', checkOutTime: now };
+      }
+      return u;
+    }));
   };
 
-  // Helper: Export CSV
-  const exportCSV = () => {
-    const bom = "\uFEFF"; 
-    const headers = "ลำดับ,ชื่อ-สกุล,เบอร์โทรศัพท์,สถานะ,เวลาเข้า,เวลาออก\n";
-    const rows = users.map(u => {
-      let statusText = 'ยังไม่มา';
-      if (u.status === 'checked-in') statusText = 'อยู่ในงาน';
-      if (u.status === 'checked-out') statusText = 'กลับแล้ว';
-      
-      return `${u.id},"${u.name}",'${u.phone},${statusText},${u.checkInTime || '-'},${u.checkOutTime || '-'}`;
-    }).join("\n");
-    
-    const blob = new Blob([bom + headers + rows], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `EventCheck_Report_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Helper: Export PDF
-  const exportPDF = async () => {
-    try {
-      const doc = new jsPDF();
-      
-      // Load Thai Font (THSarabunNew)
-      const fontUrl = 'https://cdn.jsdelivr.net/gh/nokstatic/public-fonts@master/THSarabunNew/THSarabunNew.ttf';
-      const fontName = 'THSarabunNew';
-      
-      const response = await fetch(fontUrl);
-      const buffer = await response.arrayBuffer();
-      
-      // Convert to base64 string for jsPDF
-      const binary = String.fromCharCode(...new Uint8Array(buffer));
-      const base64Font = btoa(binary);
-
-      doc.addFileToVFS('THSarabunNew.ttf', base64Font);
-      doc.addFont('THSarabunNew.ttf', fontName, 'normal');
-      doc.setFont(fontName);
-
-      // Header
-      doc.setFontSize(20);
-      doc.setTextColor(100, 100, 100);
-      doc.text("รายงานการลงทะเบียน (Registration Report)", 105, 15, { align: 'center' });
-      doc.setFontSize(14);
-      doc.text(`วันที่: ${new Date().toLocaleDateString('th-TH')}`, 105, 22, { align: 'center' });
-      
-      // Stats Summary
-      doc.setFontSize(12);
-      const summary = `ทั้งหมด: ${stats.total} | มาแล้ว: ${stats.checkedIn} (อยู่ในงาน: ${stats.present}, กลับแล้ว: ${stats.returned}) | ยังไม่มา: ${stats.pending}`;
-      doc.text(summary, 105, 30, { align: 'center' });
-
-      // Table
-      const tableColumn = ["ลำดับ", "ชื่อ-นามสกุล", "เบอร์โทร", "สถานะ", "เวลาเข้า", "เวลาออก"];
-      const tableRows = users.map(user => {
-        let statusText = 'ยังไม่มา';
-        if (user.status === 'checked-in') statusText = 'อยู่ในงาน';
-        if (user.status === 'checked-out') statusText = 'กลับแล้ว';
-        
-        return [
-          user.id,
-          user.name,
-          user.phone,
-          statusText,
-          user.checkInTime || '-',
-          user.checkOutTime || '-'
-        ];
-      });
-
-      autoTable(doc, {
-        head: [tableColumn],
-        body: tableRows,
-        startY: 35,
-        styles: { font: fontName, fontSize: 12, cellPadding: 2 },
-        headStyles: { fillColor: [139, 92, 246] }, // Violet-500 Header
-        alternateRowStyles: { fillColor: [245, 243, 255] }, // Very light violet for alternate rows
-        theme: 'grid'
-      });
-
-      doc.save(`EventCheck_Report_${new Date().toISOString().split('T')[0]}.pdf`);
-    } catch (error) {
-      console.error("PDF Generation Error:", error);
-      alert("ไม่สามารถสร้างไฟล์ PDF ได้ในขณะนี้ (Error loading fonts)");
-    }
-  };
-
-  // Session Management
-  const handleResetSession = () => {
-    if (confirm("คุณต้องการจบการลงทะเบียนรอบนี้ใช่หรือไม่?\nระบบจะดาวน์โหลดรายงานอัตโนมัติ และรีเซ็ตสถานะทุกคนเป็น 'ยังไม่มา'")) {
-      exportCSV(); // Auto export CSV
-      exportPDF(); // Auto export PDF
-      setUsers(prev => prev.map(u => ({ ...u, status: 'pending', checkInTime: undefined, checkOutTime: undefined })));
-    }
-  };
-
-  const handleClearAll = () => {
-    if (confirm("คำเตือน: คุณต้องการลบรายชื่อทั้งหมดออกจากระบบใช่หรือไม่?\nการกระทำนี้ไม่สามารถย้อนกลับได้")) {
-      setUsers([]);
-    }
-  };
-
-  // Handle Adding New User
-  const handleAddUser = (name: string, phone: string) => {
+  const handleRegister = (userData: Partial<User>) => {
     const newUser: User = {
-      id: users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 1,
-      name,
-      phone: normalizePhone(phone),
+      id: Date.now(),
+      studentId: userData.studentId || '',
+      name: userData.name || '',
+      phone: normalizePhone(userData.phone || ''),
+      faculty: userData.faculty || '-',
+      major: userData.major || '-',
+      eventId: selectedEventId,
       status: 'pending'
     };
     setUsers(prev => [...prev, newUser]);
+    setRegisteredUser(newUser);
   };
 
-  // Handle Updating Existing User
-  const handleUpdateUser = (updatedUser: User) => {
-    setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-  };
-
-  // Handle Bulk Import
-  const handleImportUsers = (newUsersData: { name: string; phone: string }[]) => {
-    const nextIdStart = users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 1;
-    const newUsers: User[] = newUsersData.map((u, index) => ({
-      id: nextIdStart + index,
-      name: u.name,
-      phone: normalizePhone(u.phone),
-      status: 'pending'
+  const handleImportUsers = (newUsers: any[]) => {
+    const formatted = newUsers.map((u, i) => ({
+      id: Date.now() + i,
+      studentId: u.studentId || '',
+      name: u.name || '',
+      phone: normalizePhone(u.phone || ''),
+      faculty: u.faculty || '-',
+      major: u.major || '-',
+      eventId: selectedEventId,
+      status: 'pending' as const
     }));
-    setUsers(prev => [...prev, ...newUsers]);
+    
+    // Replace logic: Filter out existing users of THIS event, then add the new ones
+    setUsers(prev => {
+      const otherEventUsers = prev.filter(u => u.eventId !== selectedEventId);
+      return [...otherEventUsers, ...formatted];
+    });
   };
 
-  // Handle Admin Login
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password === '1234') { // Simple pass for demo
-      setIsAdmin(true);
-      setShowLogin(false);
-      setPassword('');
-    } else {
-      alert('รหัสผ่านไม่ถูกต้อง');
-    }
+  const exportCSV = () => {
+    const bom = "\uFEFF"; 
+    const headers = "รหัสนักศึกษา,ชื่อ-สกุล,เบอร์โทร,คณะ,สาขาวิชา,สถานะ,เวลาเข้า,เวลาออก\n";
+    const rows = currentEventUsers.map(u => {
+      const statusText = u.status === 'checked-in' ? 'อยู่ในงาน' : u.status === 'checked-out' ? 'กลับแล้ว' : 'ยังไม่มา';
+      return `'${u.studentId},"${u.name}",'${u.phone},"${u.faculty}","${u.major}",${statusText},${u.checkInTime || '-'},${u.checkOutTime || '-'}`;
+    }).join("\n");
+    const blob = new Blob([bom + headers + rows], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Report_${currentEvent.name}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
   };
 
-  if (demoStatus.isExpired) {
-    return (
-      <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-slate-100 font-sans p-4 text-center">
-        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full border-t-8 border-rose-500 animate-in zoom-in">
-           <div className="w-20 h-20 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-6">
-             <AlertTriangle className="w-10 h-10 text-rose-500" />
-           </div>
-           <h1 className="text-3xl font-bold text-slate-800 mb-2">Demo Expired</h1>
-           <p className="text-slate-500 mb-8">
-             ระยะเวลาทดลองใช้งาน 30 วันสิ้นสุดแล้ว<br/>กรุณาติดต่อผู้พัฒนาเพื่อใช้งานต่อ
-           </p>
-           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6">
-             <p className="text-sm text-slate-400 font-medium uppercase tracking-wider mb-1">Contact Developer</p>
-             <p className="text-xl font-bold text-violet-600">Codelex.PHR</p>
-           </div>
-           <button 
-             onClick={() => window.location.reload()}
-             className="w-full py-3 bg-slate-800 text-white rounded-xl font-medium hover:bg-slate-900 transition-colors"
-           >
-             Refresh Page
-           </button>
-        </div>
-        <p className="mt-8 text-slate-400 text-sm">Developed by Codelex.PHR</p>
-      </div>
-    );
-  }
+  const exportPDF = async () => {
+    const doc = new jsPDF();
+    const fontUrl = 'https://cdn.jsdelivr.net/gh/nokstatic/public-fonts@master/THSarabunNew/THSarabunNew.ttf';
+    const response = await fetch(fontUrl);
+    const buffer = await response.arrayBuffer();
+    const base64Font = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+    doc.addFileToVFS('THSarabunNew.ttf', base64Font);
+    doc.addFont('THSarabunNew.ttf', 'THSarabunNew', 'normal');
+    doc.setFont('THSarabunNew');
+    
+    doc.setFontSize(18);
+    doc.text(`รายงาน: ${currentEvent.name}`, 105, 15, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text(`โดย Codelex.PHR | ทั้งหมด ${stats.total} | ในงาน ${stats.present} | กลับแล้ว ${stats.returned}`, 105, 22, { align: 'center' });
+
+    autoTable(doc, {
+      head: [["รหัสนักศึกษา", "ชื่อ-นามสกุล", "คณะ", "สถานะ", "เวลาเข้า"]],
+      body: currentEventUsers.map(u => [u.studentId || '-', u.name || '-', u.faculty || '-', u.status === 'checked-in' ? 'มาแล้ว' : u.status === 'checked-out' ? 'กลับแล้ว' : 'รอ', u.checkInTime || '-']),
+      startY: 30,
+      styles: { font: 'THSarabunNew', fontSize: 10 },
+      headStyles: { fillColor: [124, 58, 237] }
+    });
+    doc.save(`Report_${currentEvent.name}.pdf`);
+  };
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-slate-50 font-sans overflow-hidden">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-40 border-b border-violet-100 shrink-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <header className="bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-40 border-b border-violet-100 shrink-0">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-tr from-violet-500 to-fuchsia-500 p-2 rounded-xl shadow-md shadow-violet-200">
-              <QrCode className="w-6 h-6 text-white" />
-            </div>
+            <div className="bg-gradient-to-tr from-violet-500 to-fuchsia-500 p-2 rounded-xl shadow-md"><QrCode className="w-6 h-6 text-white" /></div>
             <div className="hidden sm:block">
-              <h1 className="text-xl font-bold text-slate-700 tracking-tight leading-none">
-                Event<span className="text-violet-500">Check</span>
-              </h1>
+              <h1 className="text-xl font-bold text-slate-700 leading-none">Event<span className="text-violet-500">Check</span></h1>
               <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">by Codelex.PHR</span>
             </div>
           </div>
           
-          <div className="flex items-center gap-3">
-            {/* Demo Badge */}
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${demoStatus.daysLeft <= 5 ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200'} hidden md:flex`}>
-              <Clock className="w-3.5 h-3.5" />
-              <span>Demo: {demoStatus.daysLeft} วัน</span>
+          <div className="flex items-center gap-2">
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 text-[10px] font-bold">
+              <Clock className="w-3 h-3" /> DEMO: {demoStatus.daysLeft} วัน
             </div>
-
-            <nav className="flex space-x-1 bg-slate-100 p-1 rounded-2xl">
-              {[
-                { id: 'scan', icon: ScanLine, label: 'จุดสแกน' },
-                { id: 'overview', icon: LayoutDashboard, label: 'ข้อมูล' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`
-                    flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300
-                    ${activeTab === tab.id 
-                      ? 'bg-white text-violet-600 shadow-sm' 
-                      : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}
-                  `}
-                >
-                  <tab.icon className="w-4 h-4" />
-                  <span className="hidden sm:inline">{tab.label}</span>
-                </button>
-              ))}
+            <nav className="flex bg-slate-100 p-1 rounded-2xl">
+              <button onClick={() => setActiveTab('register')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'register' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}>สมัคร</button>
+              <button onClick={() => setActiveTab('scan')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'scan' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}>สแกน</button>
+              <button onClick={() => setActiveTab('overview')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'overview' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}>แดชบอร์ด</button>
+              {isAdmin && <button onClick={() => setActiveTab('events')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'events' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}>จัดการ</button>}
             </nav>
-
-            <div className="h-6 w-px bg-slate-200 mx-1"></div>
-
-            <button 
-              onClick={() => isAdmin ? setIsAdmin(false) : setShowLogin(true)}
-              className={`p-2 rounded-full transition-all duration-300 ${isAdmin ? 'bg-amber-100 text-amber-500 ring-2 ring-amber-200' : 'bg-slate-100 text-slate-400 hover:bg-violet-100 hover:text-violet-500'}`}
-              title={isAdmin ? "Exit Developer Mode" : "Enter Developer Mode"}
-            >
+            <button onClick={() => isAdmin ? setIsAdmin(false) : setShowLogin(true)} className={`p-2 rounded-full transition-all ${isAdmin ? 'bg-amber-100 text-amber-500' : 'bg-slate-100 text-slate-400'}`}>
               {isAdmin ? <Unlock className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className={`flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-8 overflow-y-auto ${activeTab === 'scan' ? 'flex flex-col justify-center' : ''}`}>
-        {activeTab === 'overview' && (
-          <div className="space-y-8 animate-fade-in pb-20">
-            
-            {/* Session & Admin Controls - HIDDEN UNLESS ADMIN */}
-            {isAdmin && (
-              <div className="bg-white rounded-2xl shadow-sm p-4 border border-rose-100 bg-rose-50/50 flex flex-col md:flex-row justify-between items-center gap-4 animate-in fade-in slide-in-from-top-4">
-                 <div>
-                   <h2 className="font-bold text-rose-800 flex items-center gap-2">
-                     <ShieldCheck className="w-5 h-5" />
-                     Developer Control Panel
-                   </h2>
-                   <p className="text-sm text-rose-600 mt-1">จัดการรอบการลงทะเบียน ล้างข้อมูล และแก้ไขรายชื่อ</p>
-                 </div>
-                 
-                 <div className="flex flex-wrap gap-2">
-                   <button
-                     onClick={handleResetSession}
-                     className="flex items-center gap-2 px-4 py-2 bg-white text-violet-600 border border-violet-200 rounded-xl text-sm font-medium hover:bg-violet-50 transition-colors shadow-sm"
-                   >
-                     <RefreshCw className="w-4 h-4" />
-                     จบรอบ & เริ่มใหม่
-                   </button>
-                   
-                   <button
-                     onClick={handleClearAll}
-                     className="flex items-center gap-2 px-4 py-2 bg-white text-rose-600 border border-rose-200 rounded-xl text-sm font-medium hover:bg-rose-50 transition-colors shadow-sm"
-                   >
-                     <Trash2 className="w-4 h-4" />
-                     ล้างข้อมูลทั้งหมด
-                   </button>
-                 </div>
-              </div>
-            )}
+      {activeTab !== 'events' && (
+        <div className="bg-violet-600 text-white py-2 shadow-inner overflow-hidden">
+           <div className="max-w-7xl mx-auto px-4 flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
+              <Calendar className="w-4 h-4 shrink-0 opacity-70" />
+              <span className="text-[10px] font-bold uppercase tracking-widest shrink-0">Event Selection:</span>
+              {events.map(e => (
+                <button key={e.id} onClick={() => setSelectedEventId(e.id)} className={`px-4 py-1 rounded-full text-[10px] font-bold transition-all ${selectedEventId === e.id ? 'bg-white text-violet-600' : 'bg-violet-400/50 text-violet-100'}`}>{e.name}</button>
+              ))}
+           </div>
+        </div>
+      )}
 
-            {/* Dashboard Section */}
-            <section>
-               <Dashboard stats={stats} />
-            </section>
-            
-            {/* List Section - Edit/Export Locked via Prop */}
-            <section>
-               <UserList 
-                 users={users} 
-                 isEditable={isAdmin}
-                 onAddUser={handleAddUser}
-                 onUpdateUser={handleUpdateUser}
-                 onImportUsers={handleImportUsers}
-                 onExportCSV={exportCSV}
-                 onExportPDF={exportPDF}
-               />
-            </section>
+      <main className={`flex-1 w-full max-w-7xl mx-auto px-4 py-6 overflow-y-auto ${activeTab === 'scan' || activeTab === 'register' ? 'flex flex-col items-center' : ''}`}>
+        {activeTab === 'register' && (
+          <div className="w-full max-w-2xl">
+            {!registeredUser ? <RegistrationForm eventName={currentEvent.name} onRegister={handleRegister} /> : <EventPass user={registeredUser} event={currentEvent} onBack={() => setRegisteredUser(null)} />}
           </div>
         )}
 
         {activeTab === 'scan' && (
-          <div className="w-full flex flex-col items-center justify-center animate-fade-in h-full">
-            <header className="text-center mb-6 shrink-0">
-              <div className="inline-block px-4 py-1 bg-violet-100 text-violet-600 rounded-full text-xs font-semibold mb-2 tracking-wide uppercase">Real-time Check-in</div>
-              <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-2">จุดลงทะเบียน</h2>
-              <p className="text-slate-500 text-sm md:text-base">
-                สแกนครั้งแรก <span className="text-emerald-500 font-bold">เข้างาน</span> / สแกนซ้ำ <span className="text-slate-500 font-bold">กลับบ้าน</span>
-              </p>
-            </header>
-            <div className="w-full flex-1 flex items-center justify-center min-h-0">
-               <Scanner users={users} onScan={handleCheckIn} />
-            </div>
+          <div className="w-full h-full flex flex-col items-center justify-center py-4">
+             <div className="text-center mb-8"><h2 className="text-3xl font-bold text-slate-800">{currentEvent.name}</h2><p className="text-slate-500 mt-1">จุดตรวจสอบและลงทะเบียนเข้าร่วมโครงการ</p></div>
+             <Scanner users={currentEventUsers} onScan={handleCheckIn} />
           </div>
+        )}
+
+        {activeTab === 'overview' && (
+          <div className="space-y-8 pb-10">
+            <div className="flex justify-between items-start">
+               <div><h2 className="text-2xl font-bold text-slate-800">{currentEvent.name}</h2><p className="text-slate-500 text-sm flex items-center gap-1.5 mt-1"><MapPin className="w-3.5 h-3.5" /> {currentEvent.location} &bull; {currentEvent.date}</p></div>
+               {isAdmin && <button onClick={() => { if(confirm('รีเซ็ตสถานะการลงทะเบียนทั้งหมดใน Event นี้?')) setUsers(prev => prev.map(u => u.eventId === selectedEventId ? {...u, status:'pending', checkInTime:undefined, checkOutTime:undefined} : u)); }} className="p-2.5 bg-rose-50 text-rose-500 hover:bg-rose-100 rounded-xl transition-colors"><RefreshCw className="w-5 h-5" /></button>}
+            </div>
+            <Dashboard stats={stats} />
+            <UserList 
+              users={currentEventUsers} 
+              isEditable={isAdmin}
+              onAddUser={(name, phone) => handleRegister({ name, phone })}
+              onUpdateUser={(u) => setUsers(prev => prev.map(p => p.id === u.id ? u : p))}
+              onDeleteUser={(id) => { if(confirm('ยืนยันการลบรายชื่อ?')) setUsers(prev => prev.filter(u => u.id !== id)); }}
+              onImportUsers={handleImportUsers} 
+              onExportCSV={exportCSV}
+              onExportPDF={exportPDF}
+            />
+          </div>
+        )}
+
+        {activeTab === 'events' && isAdmin && (
+          <EventManager 
+            events={events} 
+            onSave={(e) => {
+               setEvents(prev => {
+                 const exists = prev.some(p => p.id === e.id);
+                 return exists ? prev.map(p => p.id === e.id ? e : p) : [...prev, e];
+               });
+            }}
+            onDelete={(id) => { 
+              if(events.length <= 1) return alert('ต้องมีอย่างน้อย 1 กิจกรรมเสมอ');
+              if(confirm('การลบกิจกรรมจะลบข้อมูลนักศึกษาที่สมัครในกิจกรรมนี้ทั้งหมด ยืนยันหรือไม่?')) { 
+                const newEvents = events.filter(e => e.id !== id);
+                setEvents(newEvents); 
+                setUsers(prev => prev.filter(u => u.eventId !== id));
+                if(selectedEventId === id) setSelectedEventId(newEvents[0].id);
+              } 
+            }}
+          />
         )}
       </main>
 
-      {/* Admin Login Modal */}
       {showLogin && (
-        <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-xs w-full shadow-2xl shadow-violet-200 animate-in zoom-in-95 duration-200">
-             <div className="flex justify-between items-center mb-6">
-                <h3 className="font-bold text-xl text-slate-800">Developer Access</h3>
-                <button onClick={() => setShowLogin(false)} className="bg-slate-100 p-1 rounded-full hover:bg-slate-200"><X className="w-5 h-5 text-slate-500" /></button>
-             </div>
-             <form onSubmit={handleLogin} className="space-y-4">
-               <div>
-                 <input 
-                   ref={loginInputRef}
-                   type="password" 
-                   value={password}
-                   onChange={(e) => setPassword(e.target.value)}
-                   className="w-full px-4 py-3 border border-slate-200 rounded-xl text-center font-mono text-lg tracking-widest focus:ring-4 focus:ring-violet-100 focus:border-violet-500 outline-none transition-all"
-                   placeholder="Enter PIN"
-                   autoComplete="off"
-                 />
-               </div>
-               <button type="submit" className="w-full bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white py-3 rounded-xl font-bold shadow-lg shadow-violet-200 hover:shadow-violet-300 transition-all active:scale-95">
-                 Unlock
-               </button>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-[2.5rem] p-8 max-w-xs w-full shadow-2xl animate-in zoom-in">
+             <div className="flex justify-between items-center mb-8"><h3 className="font-bold text-2xl text-slate-800">Admin PIN</h3><button onClick={() => setShowLogin(false)} className="p-1 hover:bg-slate-50 rounded-full"><X className="w-6 h-6 text-slate-300" /></button></div>
+             <form onSubmit={(e) => { e.preventDefault(); if(password==='1234'){ setIsAdmin(true); setShowLogin(false); setPassword(''); } else alert('PIN ไม่ถูกต้อง'); }} className="space-y-6">
+               <input type="password" value={password} onChange={e=>setPassword(e.target.value)} autoFocus className="w-full p-4 bg-slate-50 rounded-2xl text-center font-mono text-2xl outline-none ring-4 ring-slate-100 focus:ring-violet-100" placeholder="****" />
+               <button type="submit" className="w-full bg-violet-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-violet-100">Unlock System</button>
              </form>
           </div>
         </div>
       )}
 
-      {/* Footer - Minimal on Scan tab */}
-      <footer className={`bg-white border-t border-slate-100 py-4 shrink-0 ${activeTab === 'scan' ? 'hidden md:block' : 'mt-auto'}`}>
-        <div className="max-w-7xl mx-auto px-4 text-center text-sm text-slate-400">
-          Developed by <strong>Codelex.PHR</strong> &middot; &copy; {new Date().getFullYear()} EventCheck
-        </div>
+      <footer className="bg-white border-t border-slate-100 py-4 text-center text-[10px] font-bold text-slate-400 tracking-[0.3em] uppercase">
+        Developed by Codelex.PHR &middot; &copy; {new Date().getFullYear()}
       </footer>
     </div>
   );

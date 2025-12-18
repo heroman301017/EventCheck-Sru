@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { User } from '../types';
-import { Search, Download, Check, Clock, QrCode, Edit2, Plus, Upload, X, Save, LogOut, FileText, FileSpreadsheet } from 'lucide-react';
+import { Search, Download, Check, Clock, QrCode, Edit2, LogOut, FileText, FileSpreadsheet, X, Save, Upload, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
 interface UserListProps {
@@ -8,27 +8,22 @@ interface UserListProps {
   isEditable: boolean;
   onAddUser: (name: string, phone: string) => void;
   onUpdateUser: (user: User) => void;
-  onImportUsers: (users: { name: string; phone: string }[]) => void;
+  onDeleteUser: (id: number) => void;
+  onImportUsers: (users: any[]) => void;
   onExportCSV: () => void;
   onExportPDF: () => void;
 }
 
-export const UserList: React.FC<UserListProps> = ({ users, isEditable, onAddUser, onUpdateUser, onImportUsers, onExportCSV, onExportPDF }) => {
+export const UserList: React.FC<UserListProps> = ({ users, isEditable, onUpdateUser, onDeleteUser, onImportUsers, onExportCSV, onExportPDF }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'checked-in' | 'checked-out' | 'pending'>('all');
   const [selectedQr, setSelectedQr] = useState<User | null>(null);
-  const [isExportingPDF, setIsExportingPDF] = useState(false);
-  
-  // Modal States
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [newUserForm, setNewUserForm] = useState({ name: '', phone: '' });
-
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) || user.phone.includes(searchTerm);
+    const term = searchTerm.toLowerCase();
+    const matchesSearch = user.name.toLowerCase().includes(term) || user.phone.includes(term) || user.studentId.includes(term);
     const matchesFilter = filter === 'all' ? true : user.status === filter;
     return matchesSearch && matchesFilter;
   });
@@ -40,351 +35,175 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onAddUser
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      const rows = text.split('\n').filter(row => row.trim() !== '');
-      const parsedUsers: { name: string; phone: string }[] = [];
-      const startIdx = rows[0].includes('name') || rows[0].includes('ชื่อ') ? 1 : 0;
-
-      for (let i = startIdx; i < rows.length; i++) {
-        const cols = rows[i].split(',');
-        if (cols.length >= 2) {
-          parsedUsers.push({
-            name: cols[0].trim().replace(/^"|"$/g, ''),
-            phone: cols[1].trim().replace(/^"|"$/g, '').replace(/'/g, '')
-          });
-        }
-      }
+      const lines = text.split(/\r?\n/);
+      // Skip header, allow missing values by replacing with empty strings
+      const data = lines.slice(1).filter(line => line.trim().length > 0).map(line => {
+        const columns = line.split(',').map(c => c.trim().replace(/^["']|["']$/g, '').replace(/^'/, ''));
+        return {
+          studentId: columns[0] || '',
+          name: columns[1] || '',
+          phone: columns[2] || '',
+          faculty: columns[3] || '',
+          major: columns[4] || ''
+        };
+      });
       
-      if (parsedUsers.length > 0) {
-        onImportUsers(parsedUsers);
-        alert(`Imported ${parsedUsers.length} users successfully.`);
+      if (data.length > 0) {
+        onImportUsers(data);
+        alert(`นำเข้าข้อมูลสำเร็จ ${data.length} รายการ`);
       } else {
-        alert('No valid data found in CSV.');
+        alert('ไม่พบข้อมูลในไฟล์ หรือไฟล์ไม่มีข้อมูล');
       }
-      
-      if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsText(file);
-  };
-
-  const handleSaveEdit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingUser) {
-      onUpdateUser(editingUser);
-      setIsEditModalOpen(false);
-      setEditingUser(null);
-    }
-  };
-
-  const handleSaveNew = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newUserForm.name && newUserForm.phone) {
-      onAddUser(newUserForm.name, newUserForm.phone);
-      setIsAddModalOpen(false);
-      setNewUserForm({ name: '', phone: '' });
-    }
-  };
-
-  const handlePDFClick = async () => {
-    setIsExportingPDF(true);
-    await onExportPDF();
-    setIsExportingPDF(false);
-  };
-
-  // Helper to mask phone number
-  const formatPhoneNumber = (phone: string) => {
-    if (isEditable) return phone; // Show full number in Admin Mode
-    if (phone.length < 4) return phone;
-    return phone.slice(0, -4) + 'XXXX';
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
     <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden animate-fade-in relative">
-      {/* Header / Toolbar */}
       <div className="p-6 border-b border-slate-100 bg-white flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
-        {/* Search */}
         <div className="relative w-full xl:w-80">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search className="h-4 w-4 text-slate-400" />
           </div>
           <input
             type="text"
-            placeholder="ค้นหาชื่อ หรือ เบอร์โทร..."
-            className="pl-10 pr-4 py-2.5 w-full border border-slate-200 rounded-xl focus:ring-2 focus:ring-violet-200 focus:border-violet-400 bg-slate-50 transition-all text-sm"
+            placeholder="ค้นหาชื่อ รหัส หรือเบอร์โทร..."
+            className="pl-10 pr-4 py-2.5 w-full border border-slate-200 rounded-xl focus:ring-2 focus:ring-violet-200 bg-slate-50 text-sm"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
 
-        {/* Actions */}
-        <div className="flex flex-wrap gap-2 w-full xl:w-auto">
+        <div className="flex flex-wrap gap-2 w-full xl:w-auto items-center">
           <select 
-            className="px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-violet-200 focus:border-violet-400 bg-slate-50 text-slate-600 text-sm font-medium"
+            className="px-4 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-600 text-sm font-medium"
             value={filter}
             onChange={(e) => setFilter(e.target.value as any)}
           >
             <option value="all">ทั้งหมด ({users.length})</option>
-            <option value="checked-in">อยู่ในงาน ({users.filter(u => u.status === 'checked-in').length})</option>
+            <option value="checked-in">ในงาน ({users.filter(u => u.status === 'checked-in').length})</option>
             <option value="checked-out">กลับแล้ว ({users.filter(u => u.status === 'checked-out').length})</option>
             <option value="pending">ยังไม่มา ({users.filter(u => u.status === 'pending').length})</option>
           </select>
 
-          <div className="h-8 w-px bg-slate-200 mx-2 hidden xl:block"></div>
-          
           {isEditable && (
             <>
-              <button 
-                onClick={() => setIsAddModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-violet-500 text-white rounded-xl hover:bg-violet-600 text-sm font-medium transition-colors shadow-sm shadow-violet-200"
-              >
-                <Plus className="w-4 h-4" />
-                <span>เพิ่มรายชื่อ</span>
+              <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
+              <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2.5 bg-violet-50 text-violet-600 border border-violet-100 rounded-xl text-sm font-bold hover:bg-violet-100 transition-all">
+                <Upload className="w-4 h-4" /> Import CSV
               </button>
-
-              <input 
-                type="file" 
-                accept=".csv,.txt" 
-                ref={fileInputRef} 
-                onChange={handleFileUpload} 
-                className="hidden" 
-              />
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 text-sm font-medium transition-colors"
-              >
-                <Upload className="w-4 h-4" />
-                <span>Import CSV</span>
-              </button>
-              
-              <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
-                <button 
-                  onClick={onExportCSV}
-                  className="flex items-center gap-2 px-3 py-2 text-teal-600 hover:bg-white hover:shadow-sm rounded-lg text-sm font-medium transition-all"
-                  title="Download CSV"
-                >
-                  <FileSpreadsheet className="w-4 h-4" />
-                  <span>CSV</span>
-                </button>
-                <div className="w-px bg-slate-300 my-1"></div>
-                <button 
-                  onClick={handlePDFClick}
-                  disabled={isExportingPDF}
-                  className="flex items-center gap-2 px-3 py-2 text-rose-500 hover:bg-white hover:shadow-sm rounded-lg text-sm font-medium transition-all disabled:opacity-50"
-                  title="Download PDF"
-                >
-                  <FileText className="w-4 h-4" />
-                  <span>{isExportingPDF ? '...' : 'PDF'}</span>
-                </button>
-              </div>
             </>
           )}
+
+          <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+            <button onClick={onExportCSV} title="Export CSV" className="flex items-center gap-2 px-3 py-2 text-teal-600 hover:bg-white rounded-lg text-sm font-bold transition-all">
+              <FileSpreadsheet className="w-4 h-4" />
+            </button>
+            <button onClick={onExportPDF} title="Export PDF" className="flex items-center gap-2 px-3 py-2 text-rose-500 hover:bg-white rounded-lg text-sm font-bold transition-all">
+              <FileText className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
+        <table className="w-full text-left border-collapse min-w-[800px]">
           <thead>
-            <tr className="bg-violet-50/50 text-violet-900 text-sm uppercase tracking-wider">
-              <th className="p-4 font-semibold w-16 first:rounded-tl-lg">ลำดับ</th>
-              <th className="p-4 font-semibold">ชื่อ-สกุล</th>
-              <th className="p-4 font-semibold">เบอร์โทร</th>
-              <th className="p-4 font-semibold text-center w-20">QR</th>
-              <th className="p-4 font-semibold text-center">สถานะ</th>
-              <th className="p-4 font-semibold text-center">เวลาเข้า</th>
-              <th className="p-4 font-semibold text-center last:rounded-tr-lg">เวลาออก</th>
-              {isEditable && <th className="p-4 font-semibold text-center">แก้ไข</th>}
+            <tr className="bg-violet-50/50 text-violet-900 text-[10px] uppercase tracking-widest border-b border-violet-100">
+              <th className="p-4 font-bold">รหัส นศ.</th>
+              <th className="p-4 font-bold">ชื่อ-สกุล</th>
+              <th className="p-4 font-bold">เบอร์โทร</th>
+              <th className="p-4 font-bold">คณะ/สาขา</th>
+              <th className="p-4 font-bold text-center">QR</th>
+              <th className="p-4 font-bold text-center">สถานะ</th>
+              <th className="p-4 font-bold text-center">เวลา</th>
+              {isEditable && <th className="p-4 font-bold text-center">จัดการ</th>}
             </tr>
           </thead>
           <tbody className="text-slate-600 text-sm">
             {filteredUsers.length > 0 ? (
-              filteredUsers.map((user) => {
-                const isCheckedIn = user.status === 'checked-in';
-                const isCheckedOut = user.status === 'checked-out';
-                
-                let rowClass = 'hover:bg-slate-50 border-b border-slate-50 text-slate-600';
-                if (isCheckedIn) rowClass = 'bg-emerald-50/60 hover:bg-emerald-100/50 border-b border-emerald-100 text-emerald-900'; // Pastel Green
-                if (isCheckedOut) rowClass = 'bg-slate-100/50 hover:bg-slate-200/50 border-b border-slate-200 text-slate-500'; // Pastel Gray
-
-                return (
-                  <tr 
-                    key={user.id} 
-                    className={`transition-colors duration-150 ${rowClass}`}
-                  >
-                    <td className="p-4 font-medium opacity-70">{user.id}</td>
-                    <td className="p-4 font-medium">{user.name}</td>
-                    <td className="p-4 font-mono opacity-80 tracking-wide">
-                      {formatPhoneNumber(user.phone)}
-                    </td>
-                    <td className="p-4 text-center">
-                      <button 
-                        onClick={() => setSelectedQr(user)}
-                        className={`${isCheckedIn ? 'text-emerald-500' : isCheckedOut ? 'text-slate-400' : 'text-slate-300 hover:text-violet-500'} transition-colors`}
-                        title="Show QR"
-                      >
-                        <QrCode className="w-5 h-5 mx-auto" />
-                      </button>
-                    </td>
-                    <td className="p-4 text-center">
-                      {isCheckedIn && (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white/80 text-emerald-600 shadow-sm ring-1 ring-emerald-100">
-                          <Check className="w-3 h-3" /> มาแล้ว
-                        </span>
-                      )}
-                      {isCheckedOut && (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white/80 text-slate-500 shadow-sm ring-1 ring-slate-200">
-                          <LogOut className="w-3 h-3" /> กลับแล้ว
-                        </span>
-                      )}
-                      {user.status === 'pending' && (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-500 ring-1 ring-amber-100">
-                          <Clock className="w-3 h-3" /> รอ
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4 text-center font-medium opacity-80">
-                      {user.checkInTime || '-'}
-                    </td>
-                    <td className="p-4 text-center font-medium opacity-80">
-                      {user.checkOutTime || '-'}
-                    </td>
-                    {isEditable && (
-                      <td className="p-4 text-center">
-                        <button 
-                          onClick={() => { setEditingUser(user); setIsEditModalOpen(true); }}
-                          className="text-slate-400 hover:text-amber-500 transition-colors bg-white p-1.5 rounded-lg shadow-sm border border-slate-100"
-                          title="Edit User"
-                        >
-                          <Edit2 className="w-3.5 h-3.5 mx-auto" />
-                        </button>
-                      </td>
+              filteredUsers.map((user) => (
+                <tr key={user.id} className={`border-b border-slate-50 transition-colors ${user.status === 'checked-in' ? 'bg-emerald-50/30' : user.status === 'checked-out' ? 'bg-slate-50/50' : ''}`}>
+                  <td className="p-4 font-mono font-bold text-slate-400">{user.studentId || '-'}</td>
+                  <td className="p-4 font-bold text-slate-700">{user.name || '-'}</td>
+                  <td className="p-4 font-mono">{isEditable ? (user.phone || '-') : user.phone.length > 4 ? user.phone.slice(0, -4) + 'XXXX' : user.phone}</td>
+                  <td className="p-4">
+                    <div className="text-xs font-bold text-slate-500">{user.faculty || '-'}</div>
+                    <div className="text-[10px] text-slate-400">{user.major || '-'}</div>
+                  </td>
+                  <td className="p-4 text-center">
+                    <button onClick={() => setSelectedQr(user)} className="text-slate-300 hover:text-violet-500">
+                      <QrCode className="w-5 h-5 mx-auto" />
+                    </button>
+                  </td>
+                  <td className="p-4 text-center">
+                    {user.status === 'checked-in' ? (
+                      <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-600">มาแล้ว</span>
+                    ) : user.status === 'checked-out' ? (
+                      <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-slate-200 text-slate-500">กลับแล้ว</span>
+                    ) : (
+                      <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-500">รอ</span>
                     )}
-                  </tr>
-                );
-              })
+                  </td>
+                  <td className="p-4 text-center text-[10px] font-mono">
+                    <div className="text-emerald-600 font-bold">{user.checkInTime || '-'}</div>
+                    <div className="text-slate-400">{user.checkOutTime || '-'}</div>
+                  </td>
+                  {isEditable && (
+                    <td className="p-4 text-center">
+                      <div className="flex justify-center gap-1">
+                        <button onClick={() => setEditingUser(user)} className="p-2 hover:bg-violet-50 rounded-lg text-violet-400 transition-colors" title="แก้ไข">
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => onDeleteUser(user.id)} className="p-2 hover:bg-rose-50 rounded-lg text-rose-400 transition-colors" title="ลบ">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))
             ) : (
-              <tr>
-                <td colSpan={isEditable ? 8 : 7} className="p-10 text-center text-slate-400 italic">
-                  ไม่พบข้อมูล
-                </td>
-              </tr>
+              <tr><td colSpan={8} className="p-10 text-center text-slate-300 italic">ไม่พบข้อมูล</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
-      {/* QR Code Modal */}
       {selectedQr && (
-        <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setSelectedQr(null)}>
-          <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-            <h3 className="text-xl font-bold mb-1 text-slate-800">{selectedQr.name}</h3>
-            <p className="text-slate-500 mb-6 font-mono text-lg bg-slate-50 inline-block px-3 py-1 rounded-lg">
-               {formatPhoneNumber(selectedQr.phone)}
-            </p>
-            <div className="flex justify-center mb-8 p-6 bg-white border-2 border-dashed border-slate-200 rounded-3xl">
-               <QRCodeSVG value={selectedQr.phone} size={180} level="H" className="drop-shadow-sm" />
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4" onClick={() => setSelectedQr(null)}>
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in" onClick={e => e.stopPropagation()}>
+            <h3 className="text-xl font-bold text-slate-800 mb-1">{selectedQr.name}</h3>
+            <p className="text-slate-400 font-mono mb-6">{selectedQr.studentId}</p>
+            <div className="flex justify-center mb-8 p-6 bg-white border-2 border-dashed border-slate-100 rounded-3xl">
+               <QRCodeSVG value={selectedQr.studentId || selectedQr.phone} size={180} level="H" />
             </div>
-            <button 
-              onClick={() => setSelectedQr(null)}
-              className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold transition-colors"
-            >
-              ปิดหน้าต่าง
-            </button>
+            <button onClick={() => setSelectedQr(null)} className="w-full py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold">ปิด</button>
           </div>
         </div>
       )}
 
-      {/* Edit User Modal */}
-      {isEditModalOpen && editingUser && (
-        <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
+      {editingUser && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl animate-in zoom-in">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-2xl font-bold text-slate-800">แก้ไขข้อมูล</h3>
-              <button onClick={() => setIsEditModalOpen(false)} className="bg-slate-50 p-2 rounded-full hover:bg-slate-100"><X className="w-5 h-5 text-slate-400" /></button>
+              <button onClick={() => setEditingUser(null)}><X className="w-6 h-6 text-slate-300" /></button>
             </div>
-            <form onSubmit={handleSaveEdit} className="space-y-5">
-              <div>
-                <label className="block text-sm font-bold text-slate-600 mb-2">ชื่อ-นามสกุล</label>
-                <input 
-                  type="text" 
-                  value={editingUser.name}
-                  onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-4 focus:ring-violet-100 focus:border-violet-400 outline-none transition-all"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-600 mb-2">เบอร์โทรศัพท์ (QR Value)</label>
-                <input 
-                  type="text" 
-                  value={editingUser.phone}
-                  onChange={(e) => setEditingUser({ ...editingUser, phone: e.target.value })}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-4 focus:ring-violet-100 focus:border-violet-400 outline-none transition-all font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-600 mb-2">สถานะ</label>
-                <select
-                  value={editingUser.status}
-                  onChange={(e) => setEditingUser({ ...editingUser, status: e.target.value as any })}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-4 focus:ring-violet-100 focus:border-violet-400 outline-none transition-all bg-white"
-                >
-                  <option value="pending">รอ (Pending)</option>
-                  <option value="checked-in">อยู่ในงาน (Checked In)</option>
-                  <option value="checked-out">กลับแล้ว (Checked Out)</option>
-                </select>
-              </div>
-              <div className="pt-4 flex gap-3">
-                 <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 py-3 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold">ยกเลิก</button>
-                 <button type="submit" className="flex-1 py-3 text-white bg-violet-500 hover:bg-violet-600 rounded-xl flex justify-center items-center gap-2 font-bold shadow-lg shadow-violet-200">
-                   <Save className="w-4 h-4" /> บันทึก
-                 </button>
-              </div>
-            </form>
+            <div className="space-y-4">
+               <div><label className="text-[10px] font-bold text-slate-400 uppercase">ชื่อ-สกุล</label><input type="text" value={editingUser.name} onChange={e=>setEditingUser({...editingUser, name:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl outline-none" /></div>
+               <div className="grid grid-cols-2 gap-4">
+                  <div><label className="text-[10px] font-bold text-slate-400 uppercase">รหัส นศ.</label><input type="text" value={editingUser.studentId} onChange={e=>setEditingUser({...editingUser, studentId:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl outline-none" /></div>
+                  <div><label className="text-[10px] font-bold text-slate-400 uppercase">เบอร์โทร</label><input type="text" value={editingUser.phone} onChange={e=>setEditingUser({...editingUser, phone:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl outline-none" /></div>
+               </div>
+               <div><label className="text-[10px] font-bold text-slate-400 uppercase">คณะ</label><input type="text" value={editingUser.faculty} onChange={e=>setEditingUser({...editingUser, faculty:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl outline-none" /></div>
+               <div><label className="text-[10px] font-bold text-slate-400 uppercase">สถานะ</label><select value={editingUser.status} onChange={e=>setEditingUser({...editingUser, status: e.target.value as any})} className="w-full p-3 bg-slate-50 rounded-xl outline-none"><option value="pending">รอ</option><option value="checked-in">มาแล้ว</option><option value="checked-out">กลับแล้ว</option></select></div>
+               <button onClick={() => { onUpdateUser(editingUser); setEditingUser(null); }} className="w-full py-4 bg-violet-500 text-white rounded-2xl font-bold flex items-center justify-center gap-2"><Save className="w-5 h-5" /> บันทึก</button>
+            </div>
           </div>
         </div>
       )}
-
-      {/* Add User Modal */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold text-slate-800">เพิ่มรายชื่อใหม่</h3>
-              <button onClick={() => setIsAddModalOpen(false)} className="bg-slate-50 p-2 rounded-full hover:bg-slate-100"><X className="w-5 h-5 text-slate-400" /></button>
-            </div>
-            <form onSubmit={handleSaveNew} className="space-y-5">
-              <div>
-                <label className="block text-sm font-bold text-slate-600 mb-2">ชื่อ-นามสกุล</label>
-                <input 
-                  type="text" 
-                  required
-                  value={newUserForm.name}
-                  onChange={(e) => setNewUserForm({ ...newUserForm, name: e.target.value })}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-4 focus:ring-violet-100 focus:border-violet-400 outline-none transition-all"
-                  placeholder="ระบุชื่อ-สกุล"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-600 mb-2">เบอร์โทรศัพท์</label>
-                <input 
-                  type="text" 
-                  required
-                  value={newUserForm.phone}
-                  onChange={(e) => setNewUserForm({ ...newUserForm, phone: e.target.value })}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-4 focus:ring-violet-100 focus:border-violet-400 outline-none transition-all font-mono"
-                  placeholder="08xxxxxxxx"
-                />
-              </div>
-              <div className="pt-4 flex gap-3">
-                 <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 py-3 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold">ยกเลิก</button>
-                 <button type="submit" className="flex-1 py-3 text-white bg-emerald-500 hover:bg-emerald-600 rounded-xl flex justify-center items-center gap-2 font-bold shadow-lg shadow-emerald-200">
-                   <Plus className="w-4 h-4" /> เพิ่มรายชื่อ
-                 </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 };

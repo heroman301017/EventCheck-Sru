@@ -1,6 +1,6 @@
-import { User } from './types';
 
-// Helper to convert Thai Numerals to Arabic for the system logic
+import { User, Event } from './types';
+
 export const normalizePhone = (phone: string) => {
   return phone
     .replace(/๐/g, '0').replace(/๑/g, '1').replace(/๒/g, '2').replace(/๓/g, '3').replace(/๔/g, '4')
@@ -8,85 +8,25 @@ export const normalizePhone = (phone: string) => {
     .replace(/-/g, '').replace(/\s/g, '');
 };
 
-// Data extracted and cleaned from the provided PDF content
+export const INITIAL_EVENTS: Event[] = [
+  {
+    id: 'e1',
+    name: 'ปฐมนิเทศนักศึกษาใหม่ 2567',
+    date: '2024-06-01',
+    location: 'หอประชุมใหญ่',
+    description: 'กิจกรรมต้อนรับนักศึกษาใหม่และแนะนำคณะ'
+  }
+];
+
 export const INITIAL_USERS: User[] = [
-  { id: 1, name: "มุทิตา ศราภัยวานิช", phone: normalizePhone("๐๙๓๕๙๒๖๑๙๘"), status: "pending" },
-  { id: 2, name: "ฐิติชญา ศรีเมือง", phone: normalizePhone("๐๙๖๓๓๐๖๒๐๙"), status: "pending" },
-  { id: 3, name: "นางสาว จุฑามาศ พริกแดง", phone: normalizePhone("๐๖๕๒๗๘๔๖๕๕"), status: "pending" },
-  { id: 4, name: "อธิตญา วงพินิจ", phone: normalizePhone("๐๘๓๘๕๐๓๔๓๕"), status: "pending" },
-  { id: 5, name: "สิทธิชัย เรื่องช่วย", phone: normalizePhone("๐๙๗๙๓๘๕๑๓๙"), status: "pending" },
-  { id: 6, name: "สุชานาถ เรื่องแก้ว", phone: normalizePhone("๐๙๖๗๒๑๗๒๐๕"), status: "pending" },
-  { id: 7, name: "สิริภัสสร โพธิ์ทอง", phone: normalizePhone("๐๘๒๒๘๑๕๙๙๒"), status: "pending" },
-  { id: 8, name: "นายกิตติพัฒน์ คงคาช่วย", phone: normalizePhone("๐๙๘๐๓๕๑๔๙๔"), status: "pending" },
-  { id: 9, name: "รัตนาภรณ์ คงด้วง", phone: normalizePhone("๐๖๒๑๕๖๗๖๘๘"), status: "pending" },
-  { id: 10, name: "อธิตญา วงพินิจ", phone: normalizePhone("๐๘๓๘๕๐๓๔๓๕"), status: "pending" }, // Duplicate in source, kept as is
-  { id: 11, name: "นางสาว บุษราคัม คงวุธ", phone: normalizePhone("๐๙๘๕๙๐๘๗๓๘"), status: "pending" },
-  { id: 12, name: "นางสาวจิราพร แป้นปลื้ม", phone: normalizePhone("๐๖๕๐๔๘๓๑๖๙"), status: "pending" },
-  { id: 13, name: "น.ส ญานัจฉรา อุทัยเกษม", phone: normalizePhone("๐๙๓๓๖๒๐๖๑๖"), status: "pending" },
-  { id: 14, name: "นางสาวนวลหง สิทธิไกล", phone: normalizePhone("๐๘๑๙๐๓๒๒๙๘"), status: "pending" },
-  { id: 15, name: "น.ส วรลักษณ์ สุระเสนี", phone: normalizePhone("๐๖๑๒๑๖๖๔๗๐"), status: "pending" },
-  { id: 16, name: "ศิริประภา", phone: normalizePhone("๐๙๒๕๒๘๗๗๗๒"), status: "pending" },
-  { id: 17, name: "ปาลิตา ขุนเจริญ", phone: normalizePhone("๐๙๘๓๔๒๒๘๒๑"), status: "pending" },
-  { id: 18, name: "วิรุฬห์ โชติพันธุ์วิทยากุล", phone: normalizePhone("๐๙๖๗๑๐๐๓๘๘"), status: "pending" },
-  { id: 19, name: "นางสาว แพรวา ปานเมือง", phone: normalizePhone("๐๘๒๘๔๒๑๑๑๓๖"), status: "pending" },
-  { id: 20, name: "นางสาว ภัทรนันท์ ศรชนะ", phone: normalizePhone("๐๙๕๒๓๑๗๘๓๐"), status: "pending" },
-  { id: 21, name: "นางสาว วรรณรนา หงษ์ทอง", phone: normalizePhone("๐๘๔๒๙๖๑๔๓๑"), status: "pending" },
-  { id: 22, name: "กนกพร หลิมวัฒนา", phone: normalizePhone("๐๙๘๑๕๗๓๓๘๓"), status: "pending" },
-  { id: 23, name: "นางสาว มะลิรักสา อนันทกาญจน์", phone: normalizePhone("๐๙๙๐๒๙๔๓๖๔"), status: "pending" },
-  { id: 24, name: "นางสาวคีรภัทสร ทองสุข", phone: normalizePhone("๐๙๖๖๔๖๗๗๘๖"), status: "pending" },
-  { id: 25, name: "ธณิสา จ่องเฮ้า", phone: normalizePhone("๐๘๓๘๖๓๕๐๑๘"), status: "pending" },
-  { id: 26, name: "ธัญชนก มาก รอด", phone: normalizePhone("๐๙๗๑๘๙๙๕๗๘"), status: "pending" },
-  { id: 27, name: "น.ส.ปัณฑิตา คะเณย์", phone: normalizePhone("๐๙๒๕๙๘๒๐๑๗"), status: "pending" },
-  { id: 28, name: "รุ้งรฎา เกษเพ็ชร", phone: normalizePhone("๐๙๗๐๙๘๒๔๐๘"), status: "pending" },
-  { id: 29, name: "นางสุธาทิพย์ ศรีเพ็ชร", phone: normalizePhone("๐๖๓๐๘๙๐๐๑๖"), status: "pending" },
-  { id: 30, name: "นางสาวลดาวัลย์ นาคเนนัย", phone: normalizePhone("๐๙๒๘๓๐๒๘๐๙"), status: "pending" },
-  { id: 31, name: "พนิตา หวังหลี", phone: normalizePhone("๐๙๓๗๓๐๖๖๘๔"), status: "pending" },
-  { id: 32, name: "พิมลวรรณ หิรัญ", phone: normalizePhone("๐๖๒๙๖๓๘๑๕๘"), status: "pending" },
-  { id: 33, name: "นางสาวโนอามีร่า เพ็งคง", phone: normalizePhone("๐๙๔๗๐๓๖๙๑๔"), status: "pending" },
-  { id: 34, name: "นายสันติสุข พรมชู", phone: normalizePhone("๐๙๐๙๐๖๗๖๗๑"), status: "pending" },
-  { id: 35, name: "นางสาวโสรยา จันทร์ดำ", phone: normalizePhone("๐๖๑๒๓๖๒๔๖๙"), status: "pending" },
-  { id: 36, name: "นายสุขสันติ พรมชู", phone: normalizePhone("๐๙๕๕๖๕๘๕๑๒"), status: "pending" },
-  { id: 37, name: "วรัชญา ขุนอารี", phone: normalizePhone("๐๙๙๑๘๒๘๓๖๖"), status: "pending" },
-  { id: 38, name: "นายสมรักษ์ โพธิกุล", phone: normalizePhone("๐๙๒๖๑๐๓๐๗๗"), status: "pending" },
-  { id: 39, name: "นางสาวรัตนา ทองมาก", phone: "0980130933", status: "pending" },
-  { id: 40, name: "นางสาวดวงกมล อริรัตน์", phone: normalizePhone("๐๖๒๒๘๑๒๓๗๐"), status: "pending" },
-  { id: 41, name: "วิจิตรา เพชรช่วย", phone: normalizePhone("๐๖๓๘๗๐๒๕๘๔"), status: "pending" },
-  { id: 42, name: "วรวิทย์ ชูมณี", phone: normalizePhone("๐๙๒๙๖๑๘๐๓๙"), status: "pending" },
-  { id: 43, name: "นาย เมธา เดชรักษา", phone: normalizePhone("๐๖๕๕๕๗๖๖๗๑"), status: "pending" },
-  { id: 44, name: "นายสุขสันติ พรมชู", phone: normalizePhone("๐๙๕๕๖๕๘๕๑๒"), status: "pending" },
-  { id: 45, name: "นายรพีพงษ์ พรหมจรรย์", phone: normalizePhone("๐๙๓๓๖๕๑๑๖๕"), status: "pending" },
-  { id: 46, name: "ธัญวรัตม์ อิ่มเต็ม", phone: normalizePhone("๐๘๑๗๓๔๗๐๑๒"), status: "pending" },
-  { id: 47, name: "ณัฐพงศ์ เพชรนาคิน", phone: normalizePhone("๐๙๓๑๐๘๙๐๒๔"), status: "pending" },
-  { id: 48, name: "สัณหณัฐ คงกระจ่าง", phone: normalizePhone("๐๖๒๘๐๙๖๔๗๔"), status: "pending" },
-  { id: 49, name: "ตรีวิทย์ บัวทอง", phone: normalizePhone("๐๙๔๒๙๗๑๗๒๗"), status: "pending" },
-  { id: 50, name: "นางสาว ฉัตรลดา พรหมคีรี", phone: normalizePhone("๐๖๕๖๕๖๑๑๒๘"), status: "pending" },
-  { id: 51, name: "นางสาว หฤทัย สงสวัสดิ์", phone: normalizePhone("๐๘๔๐๕๗๗๗๔๓"), status: "pending" },
-  { id: 52, name: "ณิชานันท์ วิเศษสุทธิ์", phone: normalizePhone("๐๖๕๖๕๖๑๑๓๙"), status: "pending" },
-  { id: 53, name: "ปาริฉัตร ช่องลมกรด", phone: normalizePhone("๐๙๘๔๔๙๐๒๑๖"), status: "pending" },
-  { id: 54, name: "นางสาวจิราพร ทองคำแก้ว", phone: normalizePhone("๐๙๒๙๒๗๘๖๑๒"), status: "pending" },
-  { id: 55, name: "นางสาวนิดติญา พะลิงค์", phone: normalizePhone("๐๘๑๕๒๑๔๒๐๕"), status: "pending" },
-  { id: 56, name: "น.ส บุณยวีร์ บัวแย้ม", phone: normalizePhone("๐๙๓๗๒๙๖๑๔๐"), status: "pending" },
-  { id: 57, name: "นางสาวธนาภรณ์ ค้าขึ้น", phone: normalizePhone("๐๙๔๖๐๑๗๗๙๗"), status: "pending" },
-  { id: 58, name: "จันทร์จิรา ตั้งซุ่นหิ้ม", phone: normalizePhone("๐๙๒๕๕๔๓๒๒๘"), status: "pending" },
-  { id: 59, name: "มุทิตา กระมล", phone: normalizePhone("๐๖๔๕๒๐๗๗๖๘"), status: "pending" },
-  { id: 60, name: "ญาณิศา สุวรรณ", phone: normalizePhone("๐๘๐๗๔๘๐๔๑๙"), status: "pending" },
-  { id: 61, name: "กัญญ์วรา สุขเจริญ", phone: normalizePhone("๐๖๓๑๔๐๙๙๔๐"), status: "pending" },
-  { id: 62, name: "นส.บัณพร เทพี", phone: normalizePhone("๐๖๕๕๓๖๐๑๕๓"), status: "pending" },
-  { id: 63, name: "นางสาวดารารัตน์ หนูขุนทอง", phone: normalizePhone("๐๖๕๒๔๙๒๒๗๔"), status: "pending" },
-  { id: 64, name: "เนตรดาว บุญใหญ่", phone: normalizePhone("๐๙๖๗๐๗๔๗๑๗"), status: "pending" },
-  { id: 65, name: "โสภิตนภา อินพรม", phone: normalizePhone("๐๖๑๒๘๗๗๐๔๗"), status: "pending" },
-  { id: 66, name: "สุนิสา จิตมา", phone: normalizePhone("๐๙๘๑๔๑๑๕๘๐"), status: "pending" },
-  { id: 67, name: "พรพิมล พัฒน์ปาน", phone: normalizePhone("๐๙๒๗๐๗๓๔๙๑"), status: "pending" },
-  { id: 68, name: "วัชราภรณ์ แสงศรี", phone: normalizePhone("๐๙๐๒๒๕๗๕๗๔"), status: "pending" },
-  { id: 69, name: "ศิริวิมล คงดี", phone: normalizePhone("๐๖๒๖๑๐๙๒๐๔"), status: "pending" },
-  { id: 70, name: "นางสาวสิรามล สุกรี", phone: normalizePhone("๐๙๙๐๐๐๖๐๔๔"), status: "pending" },
-  { id: 71, name: "ชลธิชา คงดี", phone: normalizePhone("๐๘๐๒๕๙๐๒๖๙"), status: "pending" },
-  { id: 72, name: "นางสาวชลิดา พรมดี", phone: normalizePhone("๐๖๓๕๗๘๓๙๐๖"), status: "pending" },
-  { id: 73, name: "นางสาวธัญชนก กาญจนรัตน์", phone: normalizePhone("๐๖๒๙๒๔๔๘๗๕"), status: "pending" },
-  { id: 74, name: "ชฎาพร เกลี้ยงมุณี", phone: normalizePhone("๐๘๔๒๕๔๓๓๙๘"), status: "pending" },
-  { id: 75, name: "นางสาวจุไรรัตน์ จันทร์แก้ว", phone: normalizePhone("๐๙๙๔๐๘๖๐๐๙"), status: "pending" },
-  { id: 76, name: "จริญา ทองยัง", phone: normalizePhone("๐๖๒๑๒๓๑๘๖๙"), status: "pending" },
-  { id: 77, name: "ปวีณา ชัยสิทธิ์", phone: normalizePhone("๐๖๑๑๔๑๔๐๓๕"), status: "pending" },
-  { id: 78, name: "นางสาวรัชดาภรณ์ ทิพย์เกิด", phone: normalizePhone("๐๙๒๗๕๗๒๙๖๐"), status: "pending" },
-  { id: 79, name: "อานนท์ บุญทวี", phone: normalizePhone("๐๘๑๓๗๐๑๘๔๕"), status: "pending" },
+  { 
+    id: 1, 
+    studentId: "64123456",
+    name: "สมชาย ใจดี", 
+    phone: "0812345678", 
+    faculty: "วิทยาการจัดการ",
+    major: "การจัดการธุรกิจ",
+    eventId: "e1",
+    status: "pending" 
+  }
 ];
