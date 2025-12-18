@@ -8,7 +8,8 @@ import { Scanner } from './components/Scanner';
 import { 
   LayoutDashboard, ScanLine, QrCode, Lock, Unlock, RefreshCw, 
   Trash2, ShieldCheck, X, Clock, AlertTriangle, Calendar, 
-  MapPin, Settings, Power, Info, RotateCcw, Loader2, ChevronRight
+  MapPin, Settings, Power, Info, RotateCcw, Loader2, ChevronRight,
+  UserPlus, Scan, Home as HomeIcon
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -22,7 +23,7 @@ import { ConfirmationModal } from './components/ConfirmationModal';
 const API_URL = "https://script.google.com/macros/s/AKfycbzkyagLeBoBZbzEEe0lsd0G1JpYEJ4QDdc9FijWEps9zMZ6gw7pkkGbQQewgO8BjjA/exec";
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'scan' | 'register' | 'events'>('register');
+  const [activeTab, setActiveTab] = useState<'home' | 'overview' | 'scan' | 'register' | 'events'>('home');
   const [users, setUsers] = useState<User[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
@@ -291,13 +292,16 @@ const App: React.FC = () => {
     <div className="min-h-[100dvh] flex flex-col bg-slate-50 font-sans overflow-hidden">
       <header className="bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-40 border-b border-violet-100 shrink-0">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('home')}>
             <div className="bg-gradient-to-tr from-violet-500 to-fuchsia-500 p-2 rounded-xl shadow-md"><QrCode className="w-6 h-6 text-white" /></div>
             <h1 className="text-xl font-bold text-slate-700 hidden sm:block">Event<span className="text-violet-500">Check</span></h1>
           </div>
           
           <div className="flex items-center gap-2">
             <nav className="flex bg-slate-100 p-1 rounded-2xl">
+              <button onClick={() => setActiveTab('home')} className={`p-2 rounded-xl transition-all ${activeTab === 'home' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-400'}`}>
+                <HomeIcon className="w-5 h-5" />
+              </button>
               {(systemSettings.isRegistrationOpen || isAdmin) && (
                 <button onClick={() => { setActiveTab('register'); setEventForRegistration(null); setRegisteredUser(null); }} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'register' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}>สมัคร</button>
               )}
@@ -316,7 +320,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {activeTab !== 'events' && activeTab !== 'register' && events.length > 0 && (
+      {activeTab !== 'events' && activeTab !== 'register' && activeTab !== 'home' && events.length > 0 && (
         <div className="bg-violet-600 text-white py-2 shadow-inner">
            <div className="max-w-7xl mx-auto px-4 flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
               <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">Event:</span>
@@ -328,7 +332,57 @@ const App: React.FC = () => {
       )}
 
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6 overflow-y-auto">
-        {events.length === 0 && activeTab !== 'events' ? (
+        {activeTab === 'home' && (
+          <div className="h-full flex flex-col items-center justify-center space-y-12 py-10 animate-in fade-in zoom-in duration-500">
+             <div className="text-center space-y-4 max-w-md">
+                <div className="inline-block p-4 bg-violet-100 text-violet-600 rounded-[2rem] mb-2">
+                   <QrCode className="w-12 h-12" />
+                </div>
+                <h2 className="text-4xl font-black text-slate-800 tracking-tight">ยินดีต้อนรับ</h2>
+                <p className="text-slate-500 font-medium">ระบบลงทะเบียนและเช็คอินอัจฉริยะ เลือกรายการที่คุณต้องการดำเนินการ</p>
+             </div>
+
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl px-4">
+                <button 
+                  onClick={() => setActiveTab('register')}
+                  className="group relative bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 text-left overflow-hidden"
+                >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-violet-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-150 duration-500"></div>
+                  <div className="relative z-10">
+                    <div className="bg-violet-500 text-white p-4 rounded-2xl w-fit mb-6 shadow-lg shadow-violet-100">
+                      <UserPlus className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-2xl font-bold text-slate-800 mb-2">ลงทะเบียน</h3>
+                    <p className="text-slate-500 text-sm leading-relaxed mb-4">สมัครเข้าร่วมกิจกรรมใหม่และรับบัตร QR Pass สำหรับเข้างานล่วงหน้า</p>
+                    <div className="flex items-center text-violet-500 font-bold text-sm">
+                      ไปที่หน้าลงทะเบียน <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </div>
+                </button>
+
+                <button 
+                  onClick={() => setActiveTab('scan')}
+                  className="group relative bg-slate-800 p-8 rounded-[2.5rem] shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 text-left overflow-hidden"
+                >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-150 duration-500"></div>
+                  <div className="relative z-10">
+                    <div className="bg-white text-slate-800 p-4 rounded-2xl w-fit mb-6 shadow-lg">
+                      <Scan className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-2xl font-bold text-white mb-2">เช็คอินเข้างาน</h3>
+                    <p className="text-slate-400 text-sm leading-relaxed mb-4">สำหรับผู้ที่มีรหัสนักศึกษาหรือเบอร์โทรศัพท์ที่ลงทะเบียนแล้ว เพื่อบันทึกเวลา</p>
+                    <div className="flex items-center text-white font-bold text-sm">
+                      เปิดกล้องสแกน <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </div>
+                </button>
+             </div>
+
+             <p className="text-slate-400 text-xs font-bold uppercase tracking-widest opacity-50 pt-10">Event Management System &bull; Version 2.0</p>
+          </div>
+        )}
+
+        {events.length === 0 && activeTab !== 'events' && activeTab !== 'home' ? (
           <div className="h-[60vh] flex flex-col items-center justify-center text-slate-400 space-y-4">
             <Calendar className="w-16 h-16 opacity-20" />
             <p>ยังไม่มีกิจกรรมในระบบ โปรดแจ้งผู้ดูแลระบบ</p>
@@ -340,6 +394,11 @@ const App: React.FC = () => {
               <div className="w-full max-w-4xl mx-auto">
                 {!eventForRegistration && !registeredUser && (
                   <div className="space-y-8">
+                    <div className="flex justify-start mb-2">
+                       <button onClick={() => setActiveTab('home')} className="flex items-center gap-2 text-slate-400 hover:text-violet-500 font-bold transition-all">
+                        <ChevronRight className="w-5 h-5 rotate-180" /> กลับหน้าหลัก
+                      </button>
+                    </div>
                     <div className="text-center space-y-2">
                        <h2 className="text-3xl font-bold text-slate-800">เลือกกิจกรรมที่น่าสนใจ</h2>
                        <p className="text-slate-500">คลิกที่กิจกรรมเพื่อดูรายละเอียดและลงทะเบียนล่วงหน้า</p>
@@ -367,7 +426,16 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {activeTab === 'scan' && <Scanner users={currentEventUsers} onScan={handleCheckIn} />}
+            {activeTab === 'scan' && (
+              <div className="space-y-6">
+                <div className="flex justify-start max-w-2xl mx-auto w-full">
+                  <button onClick={() => setActiveTab('home')} className="flex items-center gap-2 text-slate-400 hover:text-violet-500 font-bold transition-all">
+                    <ChevronRight className="w-5 h-5 rotate-180" /> กลับหน้าหลัก
+                  </button>
+                </div>
+                <Scanner users={currentEventUsers} onScan={handleCheckIn} />
+              </div>
+            )}
 
             {activeTab === 'overview' && (
               <div className="space-y-8 pb-10">
