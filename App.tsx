@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { User, Stats, Event, SystemSettings } from './types';
 import { INITIAL_USERS, INITIAL_EVENTS, normalizePhone, formatThaiDate } from './constants';
@@ -5,9 +6,8 @@ import { Dashboard } from './components/Dashboard';
 import { UserList } from './components/UserList';
 import { Scanner } from './components/Scanner';
 import { 
-  LayoutDashboard, ScanLine, QrCode, Lock, Unlock, RefreshCw, 
-  Trash2, ShieldCheck, X, Clock, AlertTriangle, Calendar, 
-  MapPin, Settings, Power, Info, RotateCcw, Loader2, ChevronRight,
+  QrCode, Lock, Unlock, RefreshCw, 
+  Calendar, MapPin, Settings, Loader2, ChevronRight,
   UserPlus, Scan, Home as HomeIcon
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
@@ -18,7 +18,7 @@ import { EventManager } from './components/EventManager';
 import { EventShowcase } from './components/EventShowcase';
 import { ConfirmationModal } from './components/ConfirmationModal';
 
-// *** สำคัญ: ตรวจสอบ URL ของ Google Apps Script ให้ถูกต้อง ***
+// *** ตรวจสอบ URL ของคุณให้ถูกต้อง ***
 const API_URL = "https://script.google.com/macros/s/AKfycbzkyagLeBoBZbzEEe0lsd0G1JpYEJ4QDdc9FijWEps9zMZ6gw7pkkGbQQewgO8BjjA/exec";
 
 const App: React.FC = () => {
@@ -54,34 +54,22 @@ const App: React.FC = () => {
   });
 
   const fetchData = async () => {
-    setIsLoading(true);
     try {
       const response = await fetch(`${API_URL}?t=${Date.now()}`);
+      if (!response.ok) throw new Error("Fetch failed");
       const data = await response.json();
       
-      const fetchedEvents = data.events || [];
-      const fetchedSettings = data.settings || {
-        isRegistrationOpen: true,
-        isScanningOpen: true,
-        allowPublicDashboard: true
-      };
-
       setUsers(data.users || []);
-      setEvents(fetchedEvents);
-      setSystemSettings(fetchedSettings);
+      setEvents(data.events || []);
+      setSystemSettings(data.settings || systemSettings);
       
-      if (fetchedEvents.length > 0 && !selectedEventId) {
-        setSelectedEventId(fetchedEvents[0].id);
+      if (data.events?.length > 0 && !selectedEventId) {
+        setSelectedEventId(data.events[0].id);
       }
 
       if (!hasRouted) {
-        if (fetchedSettings.isScanningOpen) {
-          setActiveTab('scan');
-        } else if (fetchedSettings.isRegistrationOpen) {
-          setActiveTab('register');
-        } else {
-          setActiveTab('home');
-        }
+        if (data.settings?.isScanningOpen) setActiveTab('scan');
+        else if (data.settings?.isRegistrationOpen) setActiveTab('register');
         setHasRouted(true);
       }
     } catch (error) {
@@ -95,106 +83,77 @@ const App: React.FC = () => {
     fetchData();
   }, []);
 
-  const currentEvent = useMemo(() => {
-    return events.find(e => e.id === selectedEventId) || events[0] || INITIAL_EVENTS[0];
-  }, [events, selectedEventId]);
-
-  const currentEventUsers = useMemo(() => users.filter(u => u.eventId === selectedEventId), [users, selectedEventId]);
-
-  const stats: Stats = useMemo(() => {
-    const total = currentEventUsers.length;
-    const present = currentEventUsers.filter(u => u.status === 'checked-in').length;
-    const returned = currentEventUsers.filter(u => u.status === 'checked-out').length;
-    const checkedIn = present + returned;
-    return { total, checkedIn, present, returned, pending: total - checkedIn, percentage: total > 0 ? (checkedIn / total) * 100 : 0 };
-  }, [currentEventUsers]);
+  const currentEventUsers = useMemo(() => users.filter(u => String(u.eventId) === String(selectedEventId)), [users, selectedEventId]);
 
   const postAction = async (payload: any) => {
     try {
+      console.log("Sending Payload:", payload); // ตรวจสอบข้อมูลใน Console
       await fetch(API_URL, {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
       });
-      setTimeout(() => fetchData(), 1000);
+      // หน่วงเวลาเพื่อความเสถียร
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await fetchData();
+      return true;
     } catch (error) {
       console.error("Post Action Error:", error);
+      throw error;
     }
   };
 
-  const handleSaveEvent = async (event: Event) => {
-    setEvents(prev => {
-      const exists = prev.find(e => e.id === event.id);
-      if (exists) return prev.map(e => e.id === event.id ? event : e);
-      return [...prev, event];
-    });
-    if (!selectedEventId) setSelectedEventId(event.id);
-    await postAction({ action: "saveEvent", event });
-  };
-
-  const handleDeleteEvent = (id: string) => {
-    setConfirmState({
-      isOpen: true,
-      title: 'ลบกิจกรรม?',
-      message: 'ยืนยันการลบกิจกรรมนี้? ข้อมูลผู้เข้าร่วมที่เกี่ยวข้องทั้งหมดจะไม่ปรากฏในมุมมองนี้อีก',
-      variant: 'danger',
-      onConfirm: async () => {
-        setEvents(prev => prev.filter(e => e.id !== id));
-        if (selectedEventId === id) setSelectedEventId('');
-        await postAction({ action: "deleteEvent", id });
-      }
-    });
-  };
-
   const handleCheckIn = async (scannedValue: string) => {
-    if (!systemSettings.isScanningOpen && !isAdmin) return;
-    const user = currentEventUsers.find(u => u.phone === scannedValue || u.studentId === scannedValue);
-    if (!user) return;
-
-    let newStatus: 'checked-in' | 'checked-out' = 'checked-in';
-    if (user.status === 'checked-in') newStatus = 'checked-out';
-    if (user.status === 'checked-out') return;
-
-    const now = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+    const user = currentEventUsers.find(u => 
+      String(u.phone).trim() === String(scannedValue).trim() || 
+      String(u.studentId).trim() === String(scannedValue).trim()
+    );
     
+    if (!user) {
+      console.warn("User not found for scanned value:", scannedValue);
+      throw new Error("User not found");
+    }
+
+    const newStatus = (user.status === 'checked-in') ? 'checked-out' : 'checked-in';
+    const now = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
+    
+    // อัปเดต UI ล่วงหน้า
     setUsers(prev => prev.map(u => (u.studentId === user.studentId && u.eventId === selectedEventId) ? {
       ...u, 
-      status: newStatus, 
+      status: newStatus as any, 
       checkInTime: newStatus === 'checked-in' ? now : u.checkInTime,
       checkOutTime: newStatus === 'checked-out' ? now : u.checkOutTime
     } : u));
 
+    // ส่งข้อมูลไป GAS
+    // Removed return keyword to match expected type (Promise<void>)
     await postAction({
       action: "checkIn",
-      studentId: user.studentId,
-      eventId: selectedEventId,
+      studentId: String(user.studentId).trim(),
+      eventId: String(selectedEventId).trim(),
       status: newStatus,
       time: now
     });
   };
 
   const handleRegister = async (userData: Partial<User>) => {
-    if (!systemSettings.isRegistrationOpen && !isAdmin) return;
     const targetEventId = eventForRegistration?.id || selectedEventId;
-    if (!targetEventId) {
-      alert('กรุณาเลือกกิจกรรมก่อนลงทะเบียน');
-      return;
-    }
+    if (!targetEventId) return;
+
     const newUser: User = {
       id: Date.now(),
-      studentId: userData.studentId || '',
+      studentId: String(userData.studentId || '').trim(),
       name: userData.name || '',
       phone: normalizePhone(userData.phone || ''),
       faculty: userData.faculty || '-',
       major: userData.major || '-',
-      eventId: targetEventId,
+      eventId: String(targetEventId),
       status: 'pending'
     };
     
     setUsers(prev => [...prev, newUser]);
     setRegisteredUser(newUser);
-
     await postAction({ action: "register", user: newUser });
   };
 
@@ -216,89 +175,24 @@ const App: React.FC = () => {
     });
   };
 
-  const handleImportUsers = async (newUsers: any[]) => {
-    const formatted = newUsers.map((u, i) => ({
-      id: Date.now() + i,
-      studentId: u.studentId || '',
-      name: u.name || '',
-      phone: normalizePhone(u.phone || ''),
-      faculty: u.faculty || '-',
-      major: u.major || '-',
-      eventId: selectedEventId,
-      status: 'pending' as const
-    }));
-    
-    setUsers(prev => [...prev, ...formatted]);
-    await postAction({ action: "importUsers", users: formatted });
-  };
-
-  const handleToggleSetting = async (key: keyof SystemSettings) => {
-    const newValue = !systemSettings[key];
-    setSystemSettings({ ...systemSettings, [key]: newValue });
-    await postAction({ action: "updateSettings", key, value: newValue });
-  };
-
-  const handleResetRound = () => {
-    setConfirmState({
-      isOpen: true,
-      title: 'จบรอบกิจกรรม?',
-      message: 'การจบรอบจะรีเซ็ตสถานะการเช็คอินทั้งหมดในกิจกรรมนี้ให้กลับเป็น "รอ" คุณต้องการดำเนินการต่อหรือไม่?',
-      variant: 'warning',
-      onConfirm: async () => {
-        setUsers(prev => prev.map(u => u.eventId === selectedEventId ? {...u, status:'pending', checkInTime:undefined, checkOutTime:undefined} : u));
-        await postAction({ action: "resetRound", eventId: selectedEventId });
-      }
-    });
-  };
-
-  const exportCSV = () => {
-    const bom = "\uFEFF"; 
-    const headers = "รหัสนักศึกษา,ชื่อ-สกุล,เบอร์โทร,คณะ,สาขาวิชา,สถานะ,เวลาเข้า,เวลาออก\n";
-    const rows = currentEventUsers.map(u => {
-      const statusText = u.status === 'checked-in' ? 'อยู่ในงาน' : u.status === 'checked-out' ? 'กลับแล้ว' : 'ยังไม่มา';
-      return `'${u.studentId},"${u.name}",'${u.phone},"${u.faculty}","${u.major}",${statusText},${u.checkInTime || '-'},${u.checkOutTime || '-'}`;
-    }).join("\n");
-    const blob = new Blob([bom + headers + rows], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Report_${currentEvent.name}.csv`;
-    link.click();
-  };
-
-  const exportPDF = async () => {
-    try {
-      const doc = new jsPDF();
-      const fontUrl = 'https://fonts.gstatic.com/s/sarabun/v13/dtm66pU_S8fS66tI_8B6T6Y.ttf';
-      const response = await fetch(fontUrl);
-      const buffer = await response.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      const binary = Array.from(bytes).map(b => String.fromCharCode(b)).join('');
-      const base64Font = btoa(binary);
-
-      doc.addFileToVFS('Sarabun.ttf', base64Font);
-      doc.addFont('Sarabun.ttf', 'Sarabun', 'normal');
-      doc.setFont('Sarabun');
-      
-      doc.setFontSize(18);
-      doc.text(`รายงาน: ${currentEvent.name}`, 105, 15, { align: 'center' });
-      autoTable(doc, {
-        head: [["รหัสนักศึกษา", "ชื่อ-นามสกุล", "คณะ", "สถานะ", "เวลาเข้า"]],
-        body: currentEventUsers.map(u => [u.studentId, u.name, u.faculty, u.status, u.checkInTime || '-']),
-        startY: 30,
-        styles: { font: 'Sarabun', fontSize: 10 }
-      });
-      doc.save(`Report_${currentEvent.name}.pdf`);
-    } catch (e) { alert('PDF Error'); }
-  };
-
   if (isLoading && events.length === 0) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
         <Loader2 className="w-12 h-12 text-violet-500 animate-spin" />
-        <p className="font-bold text-slate-400 animate-pulse">กำลังเตรียมข้อมูลระบบ...</p>
+        <p className="font-bold text-slate-400 animate-pulse text-lg">กำลังซิงค์ข้อมูลกับคลาวด์...</p>
       </div>
     );
   }
+
+  const currentEvent = events.find(e => String(e.id) === String(selectedEventId)) || events[0] || INITIAL_EVENTS[0];
+  const stats: Stats = {
+    total: currentEventUsers.length,
+    present: currentEventUsers.filter(u => u.status === 'checked-in').length,
+    returned: currentEventUsers.filter(u => u.status === 'checked-out').length,
+    checkedIn: currentEventUsers.filter(u => u.status !== 'pending').length,
+    pending: currentEventUsers.filter(u => u.status === 'pending').length,
+    percentage: currentEventUsers.length > 0 ? (currentEventUsers.filter(u => u.status !== 'pending').length / currentEventUsers.length) * 100 : 0
+  };
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-slate-50 font-sans overflow-hidden">
@@ -355,182 +249,81 @@ const App: React.FC = () => {
              </div>
 
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl px-4">
-                <button 
-                  onClick={() => setActiveTab('register')}
-                  className="group relative bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 text-left overflow-hidden"
-                >
+                <button onClick={() => setActiveTab('register')} className="group relative bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 text-left overflow-hidden">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-violet-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-150 duration-500"></div>
                   <div className="relative z-10">
-                    <div className="bg-violet-500 text-white p-4 rounded-2xl w-fit mb-6 shadow-lg shadow-violet-100">
-                      <UserPlus className="w-8 h-8" />
-                    </div>
+                    <div className="bg-violet-500 text-white p-4 rounded-2xl w-fit mb-6 shadow-lg shadow-violet-100"><UserPlus className="w-8 h-8" /></div>
                     <h3 className="text-2xl font-bold text-slate-800 mb-2">ลงทะเบียน</h3>
                     <p className="text-slate-500 text-sm leading-relaxed mb-4">สมัครเข้าร่วมกิจกรรมใหม่และรับบัตร QR Pass สำหรับเข้างานล่วงหน้า</p>
-                    <div className="flex items-center text-violet-500 font-bold text-sm">
-                      ไปที่หน้าลงทะเบียน <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
-                    </div>
+                    <div className="flex items-center text-violet-500 font-bold text-sm">ไปที่หน้าลงทะเบียน <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" /></div>
                   </div>
                 </button>
 
-                <button 
-                  onClick={() => setActiveTab('scan')}
-                  className="group relative bg-slate-800 p-8 rounded-[2.5rem] shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 text-left overflow-hidden"
-                >
+                <button onClick={() => setActiveTab('scan')} className="group relative bg-slate-800 p-8 rounded-[2.5rem] shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 text-left overflow-hidden">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-150 duration-500"></div>
                   <div className="relative z-10">
-                    <div className="bg-white text-slate-800 p-4 rounded-2xl w-fit mb-6 shadow-lg">
-                      <Scan className="w-8 h-8" />
-                    </div>
+                    <div className="bg-white text-slate-800 p-4 rounded-2xl w-fit mb-6 shadow-lg"><Scan className="w-8 h-8" /></div>
                     <h3 className="text-2xl font-bold text-white mb-2">เช็คอินเข้างาน</h3>
                     <p className="text-slate-400 text-sm leading-relaxed mb-4">สำหรับผู้ที่มีรหัสนักศึกษาหรือเบอร์โทรศัพท์ที่ลงทะเบียนแล้ว เพื่อบันทึกเวลา</p>
-                    <div className="flex items-center text-white font-bold text-sm">
-                      เปิดกล้องสแกน <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
-                    </div>
+                    <div className="flex items-center text-white font-bold text-sm">เปิดกล้องสแกน <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" /></div>
                   </div>
                 </button>
              </div>
-
-             <p className="text-slate-400 text-xs font-bold uppercase tracking-widest opacity-50 pt-10">Event Management System &bull; Version 2.0</p>
           </div>
         )}
 
-        {events.length === 0 && activeTab !== 'events' && activeTab !== 'home' ? (
-          <div className="h-[60vh] flex flex-col items-center justify-center text-slate-400 space-y-4">
-            <Calendar className="w-16 h-16 opacity-20" />
-            <p>ยังไม่มีกิจกรรมในระบบ โปรดแจ้งผู้ดูแลระบบ</p>
-            {isAdmin && <button onClick={() => setActiveTab('events')} className="bg-violet-500 text-white px-6 py-2 rounded-xl font-bold mt-2">ไปยังเมนูจัดการกิจกรรม</button>}
+        {activeTab === 'scan' && (
+           <div className="space-y-6">
+              <div className="flex justify-start max-w-2xl mx-auto w-full">
+                <button onClick={() => setActiveTab('home')} className="flex items-center gap-2 text-slate-400 hover:text-violet-500 font-bold transition-all"><ChevronRight className="w-5 h-5 rotate-180" /> กลับหน้าหลัก</button>
+              </div>
+              <Scanner users={currentEventUsers} onScan={handleCheckIn} pauseFocus={showLogin || confirmState.isOpen} />
+           </div>
+        )}
+
+        {activeTab === 'register' && (
+          <div className="w-full max-w-4xl mx-auto">
+            {!eventForRegistration && !registeredUser && <EventShowcase events={events} onSelect={setEventForRegistration} />}
+            {eventForRegistration && !registeredUser && <RegistrationForm eventName={eventForRegistration.name} onRegister={handleRegister} />}
+            {registeredUser && <EventPass user={registeredUser} event={eventForRegistration || currentEvent} onBack={() => { setRegisteredUser(null); setEventForRegistration(null); }} />}
           </div>
-        ) : (
-          <>
-            {activeTab === 'register' && (
-              <div className="w-full max-w-4xl mx-auto">
-                {!eventForRegistration && !registeredUser && (
-                  <div className="space-y-8">
-                    <div className="flex justify-start mb-2">
-                       <button onClick={() => setActiveTab('home')} className="flex items-center gap-2 text-slate-400 hover:text-violet-500 font-bold transition-all">
-                        <ChevronRight className="w-5 h-5 rotate-180" /> กลับหน้าหลัก
-                      </button>
-                    </div>
-                    <div className="text-center space-y-2">
-                       <h2 className="text-3xl font-bold text-slate-800">เลือกกิจกรรมที่น่าสนใจ</h2>
-                       <p className="text-slate-500">คลิกที่กิจกรรมเพื่อดูรายละเอียดและลงทะเบียนล่วงหน้า</p>
-                    </div>
-                    <EventShowcase events={events} onSelect={setEventForRegistration} />
-                  </div>
-                )}
-                
-                {eventForRegistration && !registeredUser && (
-                  <div className="w-full max-w-2xl mx-auto">
-                    <div className="flex justify-start mb-6">
-                      <button onClick={() => setEventForRegistration(null)} className="flex items-center gap-2 text-slate-400 hover:text-violet-500 font-bold transition-all">
-                        <ChevronRight className="w-5 h-5 rotate-180" /> ย้อนกลับไปเลือกกิจกรรม
-                      </button>
-                    </div>
-                    <RegistrationForm eventName={eventForRegistration.name} onRegister={handleRegister} />
-                  </div>
-                )}
+        )}
 
-                {registeredUser && (
-                  <div className="w-full max-w-2xl mx-auto">
-                    <EventPass user={registeredUser} event={eventForRegistration || currentEvent} onBack={() => { setRegisteredUser(null); setEventForRegistration(null); }} />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'scan' && (
-              <div className="space-y-6">
-                <div className="flex justify-start max-w-2xl mx-auto w-full">
-                  <button onClick={() => setActiveTab('home')} className="flex items-center gap-2 text-slate-400 hover:text-violet-500 font-bold transition-all">
-                    <ChevronRight className="w-5 h-5 rotate-180" /> กลับหน้าหลัก
-                  </button>
-                </div>
-                <Scanner users={currentEventUsers} onScan={handleCheckIn} pauseFocus={showLogin || confirmState.isOpen} />
-              </div>
-            )}
-
-            {activeTab === 'overview' && (
-              <div className="space-y-8 pb-10">
-                <div className="flex justify-between items-start">
-                   <div>
+        {activeTab === 'overview' && (
+           <div className="space-y-8 pb-10">
+              <div className="flex justify-between items-start">
+                 <div>
                     <h2 className="text-2xl font-bold text-slate-800">{currentEvent.name}</h2>
                     <p className="text-slate-500 text-sm">{currentEvent.location} &bull; {formatThaiDate(currentEvent.date)}</p>
-                   </div>
-                   {isAdmin && <button onClick={handleResetRound} className="p-2.5 bg-rose-50 text-rose-500 rounded-xl" title="Reset Check-in Status"><RefreshCw className="w-5 h-5" /></button>}
-                </div>
-                <Dashboard stats={stats} />
-                <UserList 
-                  users={currentEventUsers} 
-                  isEditable={isAdmin} 
-                  onAddUser={(name, phone) => { handleRegister({ name, phone }); }} 
-                  onUpdateUser={handleUpdateUser} 
-                  onDeleteUser={handleDeleteUser} 
-                  onImportUsers={handleImportUsers} 
-                  onExportCSV={exportCSV} 
-                  onExportPDF={exportPDF} 
-                />
+                 </div>
               </div>
-            )}
-          </>
-        )}
-
-        {activeTab === 'events' && isAdmin && (
-          <div className="space-y-10">
-            <EventManager 
-              events={events} 
-              onSave={handleSaveEvent} 
-              onDelete={handleDeleteEvent} 
-            />
-
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-rose-100">
-              <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                <Settings className="w-6 h-6 text-violet-500" />
-                System Preferences
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                 {['isRegistrationOpen', 'isScanningOpen', 'allowPublicDashboard'].map((key) => (
-                   <div key={key} className="bg-slate-50 p-6 rounded-3xl flex flex-col gap-3">
-                      <span className="font-bold text-slate-700 text-sm">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                      <button 
-                        onClick={() => handleToggleSetting(key as keyof SystemSettings)}
-                        className={`w-full h-12 rounded-2xl p-1 transition-colors flex items-center px-4 justify-between ${systemSettings[key as keyof SystemSettings] ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}
-                      >
-                        <span className="font-bold">{systemSettings[key as keyof SystemSettings] ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}</span>
-                        <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform ${systemSettings[key as keyof SystemSettings] ? 'translate-x-0' : '-translate-x-0'}`}></div>
-                      </button>
-                   </div>
-                 ))}
-              </div>
-            </div>
-          </div>
+              <Dashboard stats={stats} />
+              <UserList 
+                 users={currentEventUsers} 
+                 isEditable={isAdmin} 
+                 onAddUser={(name, phone) => handleRegister({name, phone})} 
+                 onUpdateUser={handleUpdateUser} 
+                 onDeleteUser={handleDeleteUser} 
+                 onImportUsers={()=>{}} onExportCSV={()=>{}} onExportPDF={()=>{}} 
+              />
+           </div>
         )}
       </main>
-
-      <ConfirmationModal
-        isOpen={confirmState.isOpen}
-        title={confirmState.title}
-        message={confirmState.message}
-        onConfirm={confirmState.onConfirm}
-        onCancel={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
-        variant={confirmState.variant}
-      />
 
       {showLogin && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-[2.5rem] p-8 max-w-xs w-full shadow-2xl">
-             <div className="text-center mb-6">
-                <Lock className="w-12 h-12 text-violet-500 mx-auto mb-2" />
-                <h3 className="text-xl font-bold text-slate-800">Admin Login</h3>
-                <p className="text-slate-400 text-sm">กรุณาระบุรหัสผ่านเพื่อเข้าถึงระบบจัดการ</p>
-             </div>
+             <div className="text-center mb-6"><Lock className="w-12 h-12 text-violet-500 mx-auto mb-2" /><h3 className="text-xl font-bold text-slate-800">Admin Login</h3></div>
              <form onSubmit={(e) => { e.preventDefault(); if(password==='1234'){ setIsAdmin(true); setShowLogin(false); setPassword(''); } else alert('PIN ไม่ถูกต้อง'); }} className="space-y-4">
                <input type="password" value={password} onChange={e=>setPassword(e.target.value)} autoFocus className="w-full p-4 bg-slate-50 rounded-2xl text-center font-mono text-2xl outline-none focus:ring-4 focus:ring-violet-100" placeholder="****" />
-               <button type="submit" className="w-full bg-slate-800 text-white py-4 rounded-2xl font-bold hover:bg-slate-700 active:scale-95 transition-all">Unlock Admin</button>
+               <button type="submit" className="w-full bg-slate-800 text-white py-4 rounded-2xl font-bold">Unlock Admin</button>
                <button type="button" onClick={()=>setShowLogin(false)} className="w-full text-slate-400 text-sm font-medium">ยกเลิก</button>
              </form>
           </div>
         </div>
       )}
+
+      <ConfirmationModal isOpen={confirmState.isOpen} title={confirmState.title} message={confirmState.message} onConfirm={confirmState.onConfirm} onCancel={() => setConfirmState(p => ({...p, isOpen: false}))} />
     </div>
   );
 };
