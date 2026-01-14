@@ -1,13 +1,14 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserPlus, BookOpen, GraduationCap, Phone, User, CreditCard } from 'lucide-react';
 
 interface Props {
   eventName: string;
   onRegister: (data: any) => void;
+  initialData?: { studentId?: string } | null;
 }
 
-export const RegistrationForm: React.FC<Props> = ({ eventName, onRegister }) => {
+export const RegistrationForm: React.FC<Props> = ({ eventName, onRegister, initialData }) => {
   const [form, setForm] = useState({
     studentId: '',
     name: '',
@@ -15,6 +16,12 @@ export const RegistrationForm: React.FC<Props> = ({ eventName, onRegister }) => 
     faculty: '',
     major: ''
   });
+
+  useEffect(() => {
+    if (initialData?.studentId) {
+       setForm(prev => ({ ...prev, studentId: initialData.studentId! }));
+    }
+  }, [initialData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +36,9 @@ export const RegistrationForm: React.FC<Props> = ({ eventName, onRegister }) => 
         </div>
         <h2 className="text-2xl font-bold text-slate-800">สมัครเข้าร่วมกิจกรรม</h2>
         <p className="text-violet-500 font-medium mt-1">{eventName}</p>
+        {initialData?.studentId && (
+           <p className="text-xs bg-rose-100 text-rose-500 font-bold px-3 py-1 rounded-full inline-block mt-3">ไม่พบข้อมูลในระบบ กรุณาลงทะเบียน</p>
+        )}
       </div>
       
       <form onSubmit={handleSubmit} className="p-8 space-y-5">

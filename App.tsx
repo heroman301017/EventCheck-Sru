@@ -39,6 +39,10 @@ const App: React.FC = () => {
   const [showLogin, setShowLogin] = useState(false);
   const [password, setPassword] = useState('');
   const [registeredUser, setRegisteredUser] = useState<User | null>(null);
+  const [prefillRegistration, setPrefillRegistration] = useState<{studentId: string} | null>(null);
+
+  // Store recent scans: key = studentId/phone, value = timestamp
+  const [recentScans, setRecentScans] = useState<Record<string, number>>({});
 
   const [confirmState, setConfirmState] = useState<{
     isOpen: boolean;
@@ -59,13 +63,8 @@ const App: React.FC = () => {
       if (!response.ok) throw new Error("Fetch failed");
       const data = await response.json();
       
-      // Merge logic could be implemented here to prevent overwriting local unsaved changes
-      // For now, we trust the initial load
       if (users.length === 0) {
          setUsers(data.users || []);
-      } else {
-         // Optional: Update only if needed, or provide a manual refresh button
-         // setUsers(data.users || []); 
       }
       
       if (events.length === 0) setEvents(data.events || []);
@@ -82,7 +81,6 @@ const App: React.FC = () => {
       }
     } catch (error) {
       console.error("Fetch Error:", error);
-      // Fallback: If fetch fails, ensure app can still open with initial/cached data
       if (users.length === 0) setUsers(INITIAL_USERS);
       if (events.length === 0) setEvents(INITIAL_EVENTS);
     } finally {
@@ -98,7 +96,6 @@ const App: React.FC = () => {
 
   const postAction = async (payload: any) => {
     try {
-      // Fire and forget strategy to prevent stale data from overwriting optimistic UI updates
       await fetch(API_URL, {
         method: 'POST',
         mode: 'no-cors',
@@ -108,7 +105,6 @@ const App: React.FC = () => {
       return true;
     } catch (error) {
       console.error("Post Action Error:", error);
-      // Don't re-throw, as this often fails due to CORS but the request might have succeeded or is pending
       return false; 
     }
   };
@@ -118,49 +114,53 @@ const App: React.FC = () => {
     if (!value) throw new Error("Invalid input");
 
     const cleanValue = normalizePhone(value);
+    
+    // --- 5-Minute Duplicate Scan Prevention ---
+    const lastScanTime = recentScans[value] || recentScans[cleanValue];
+    if (lastScanTime) {
+      const timeDiff = Date.now() - lastScanTime;
+      const cooldown = 5 * 60 * 1000; // 5 minutes
+      if (timeDiff < cooldown) {
+        const remainingSeconds = Math.ceil((cooldown - timeDiff) / 1000);
+        throw new Error(`DUPLICATE_SCAN:${remainingSeconds}`);
+      }
+    }
 
-    // Robust matching logic: Match Student ID OR Phone, but ignore empty DB records
     const user = currentEventUsers.find(u => {
        const uPhone = String(u.phone || '').trim();
        const uStudentId = String(u.studentId || '').trim();
-
-       // 1. Check Student ID (Exact match, ignore if DB has empty ID)
        const isIdMatch = uStudentId !== '' && uStudentId === value;
-
-       // 2. Check Phone (Exact or Normalized, ignore if DB has empty Phone)
        const isPhoneMatch = uPhone !== '' && (uPhone === value || normalizePhone(uPhone) === cleanValue);
-
        return isIdMatch || isPhoneMatch;
     });
     
     if (!user) {
-      console.warn("User not found for scanned value:", scannedValue);
-      throw new Error("User not found");
+      throw new Error("USER_NOT_FOUND");
     }
+
+    // Update local cooldown
+    setRecentScans(prev => ({
+      ...prev,
+      [value]: Date.now(),
+      [cleanValue]: Date.now()
+    }));
 
     const now = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
     
-    // Determine new status based on CURRENT state
     let newStatus: 'checked-in' | 'checked-out' = 'checked-in';
     if (user.status === 'checked-in') {
       newStatus = 'checked-out';
     }
     
-    // Optimistic UI Update
     setUsers(prev => prev.map(u => {
-      // Use ID for precise matching if available
       if (u.id === user.id) {
          let checkInTime = u.checkInTime;
          let checkOutTime = u.checkOutTime;
 
          if (newStatus === 'checked-in') {
-            // Case: Check-In (or Re-Check-In)
             checkInTime = now;
-            // Clear check-out time if re-entering
             checkOutTime = undefined; 
          } else {
-            // Case: Check-Out
-            // Preserve existing checkInTime, only update checkOutTime
             checkOutTime = now;
          }
 
@@ -174,9 +174,6 @@ const App: React.FC = () => {
       return u;
     }));
 
-    // Send to Google Sheets
-    // IMPORTANT: Send both studentId AND phone to ensure accurate matching on the server
-    // If fields are empty, send unique placeholder to prevent "empty matches empty" logic on backend
     await postAction({
       action: "checkIn",
       studentId: user.studentId ? String(user.studentId).trim() : `__NULL_ID_${Date.now()}__`,
@@ -186,6 +183,43 @@ const App: React.FC = () => {
       time: now
     });
   };
+
+  const handleScanRedirect = (scannedValue: string) => {
+    setPrefillRegistration({ studentId: scannedValue });
+    setActiveTab('register');
+    setEventForRegistration(events.find(e => e.id === selectedEventId) || null);
+  };
+
+  // --- Event CRUD Operations ---
+
+  const handleCreateEvent = async (event: Event) => {
+    setEvents(prev => [...prev, event]);
+    setSelectedEventId(event.id);
+    await postAction({ action: "createEvent", event });
+  };
+
+  const handleUpdateEvent = async (event: Event) => {
+    setEvents(prev => prev.map(e => e.id === event.id ? event : e));
+    await postAction({ action: "updateEvent", event });
+  };
+
+  const handleDeleteEvent = (id: string) => {
+    setConfirmState({
+      isOpen: true,
+      title: 'ลบกิจกรรม?',
+      message: 'การลบกิจกรรมจะทำให้ข้อมูลสถิติหายไป แต่รายชื่อผู้ใช้ยังคงอยู่ ยืนยันที่จะลบหรือไม่?',
+      variant: 'danger',
+      onConfirm: async () => {
+        setEvents(prev => prev.filter(e => e.id !== id));
+        if (selectedEventId === id && events.length > 0) {
+          setSelectedEventId(events[0].id);
+        }
+        await postAction({ action: "deleteEvent", id });
+      }
+    });
+  };
+
+  // --- User Operations ---
 
   const handleRegister = async (userData: Partial<User>) => {
     const targetEventId = eventForRegistration?.id || selectedEventId;
@@ -204,6 +238,7 @@ const App: React.FC = () => {
     
     setUsers(prev => [...prev, newUser]);
     setRegisteredUser(newUser);
+    setPrefillRegistration(null); // Clear prefill
     await postAction({ action: "register", user: newUser });
   };
 
@@ -299,7 +334,7 @@ const App: React.FC = () => {
              </div>
 
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl px-4">
-                <button onClick={() => setActiveTab('register')} className="group relative bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 text-left overflow-hidden">
+                <button onClick={() => { setActiveTab('register'); setPrefillRegistration(null); }} className="group relative bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 text-left overflow-hidden">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-violet-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-150 duration-500"></div>
                   <div className="relative z-10">
                     <div className="bg-violet-500 text-white p-4 rounded-2xl w-fit mb-6 shadow-lg shadow-violet-100"><UserPlus className="w-8 h-8" /></div>
@@ -327,15 +362,37 @@ const App: React.FC = () => {
               <div className="flex justify-start max-w-2xl mx-auto w-full">
                 <button onClick={() => setActiveTab('home')} className="flex items-center gap-2 text-slate-400 hover:text-violet-500 font-bold transition-all"><ChevronRight className="w-5 h-5 rotate-180" /> กลับหน้าหลัก</button>
               </div>
-              <Scanner users={currentEventUsers} onScan={handleCheckIn} pauseFocus={showLogin || confirmState.isOpen} />
+              <Scanner 
+                users={currentEventUsers} 
+                onScan={handleCheckIn} 
+                pauseFocus={showLogin || confirmState.isOpen}
+                onRegisterRedirect={handleScanRedirect}
+              />
            </div>
         )}
 
         {activeTab === 'register' && (
           <div className="w-full max-w-4xl mx-auto">
             {!eventForRegistration && !registeredUser && <EventShowcase events={events} onSelect={setEventForRegistration} />}
-            {eventForRegistration && !registeredUser && <RegistrationForm eventName={eventForRegistration.name} onRegister={handleRegister} />}
-            {registeredUser && <EventPass user={registeredUser} event={eventForRegistration || currentEvent} onBack={() => { setRegisteredUser(null); setEventForRegistration(null); }} />}
+            {eventForRegistration && !registeredUser && (
+               <RegistrationForm 
+                  eventName={eventForRegistration.name} 
+                  onRegister={handleRegister} 
+                  initialData={prefillRegistration}
+               />
+            )}
+            {registeredUser && <EventPass user={registeredUser} event={eventForRegistration || currentEvent} onBack={() => { setRegisteredUser(null); setEventForRegistration(null); setPrefillRegistration(null); }} />}
+          </div>
+        )}
+
+        {activeTab === 'events' && (
+          <div className="w-full max-w-4xl mx-auto">
+             <EventManager 
+                events={events} 
+                onCreate={handleCreateEvent}
+                onUpdate={handleUpdateEvent}
+                onDelete={handleDeleteEvent}
+             />
           </div>
         )}
 

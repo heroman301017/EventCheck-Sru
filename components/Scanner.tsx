@@ -1,28 +1,30 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
-import { ScanLine, ArrowRight, LogOut, LogIn, XCircle, Loader2, CheckCircle2, CloudSync, Camera, CameraOff } from 'lucide-react';
+import { ScanLine, ArrowRight, LogOut, LogIn, XCircle, Loader2, CheckCircle2, CloudSync, Camera, CameraOff, Clock } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { Html5Qrcode } from 'html5-qrcode';
 
 interface ScannerProps {
   users: User[];
   onScan: (id: string) => Promise<void>;
+  onRegisterRedirect?: (id: string) => void;
   pauseFocus?: boolean;
 }
 
-export const Scanner: React.FC<ScannerProps> = ({ users, onScan, pauseFocus = false }) => {
+export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedirect, pauseFocus = false }) => {
   const [input, setInput] = useState('');
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
   const [lastScanResult, setLastScanResult] = useState<{ status: 'success' | 'error' | 'idle'; message: string; subMessage?: string; user?: User; type?: 'in' | 'out' }>({ status: 'idle', message: '' });
   const [autoSave, setAutoSave] = useState(true);
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   
   const inputRef = useRef<HTMLInputElement>(null);
   const proofRef = useRef<HTMLDivElement>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
 
-  // Focus Management (Only when camera is NOT active)
+  // Focus Management
   useEffect(() => {
     if (pauseFocus || syncStatus !== 'idle' || lastScanResult.status !== 'idle' || isCameraActive) return;
 
@@ -33,6 +35,16 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, pauseFocus = fa
     }, 1000);
     return () => clearInterval(focusInterval);
   }, [lastScanResult.status, pauseFocus, syncStatus, isCameraActive]);
+
+  // Cooldown Countdown Timer
+  useEffect(() => {
+    if (cooldown > 0) {
+      const timer = setInterval(() => setCooldown(prev => prev - 1), 1000);
+      return () => clearInterval(timer);
+    } else if (cooldown === 0 && lastScanResult.status === 'error' && lastScanResult.message === 'ห้ามสแกนซ้ำ') {
+       handleReset();
+    }
+  }, [cooldown, lastScanResult]);
 
   // Camera Logic
   useEffect(() => {
@@ -50,12 +62,9 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, pauseFocus = fa
               aspectRatio: 1.0
             },
             (decodedText) => {
-              // On Success
               handleScanProcess(decodedText);
             },
-            (errorMessage) => {
-              // On Frame Error (ignore)
-            }
+            (errorMessage) => { }
           );
         } catch (err) {
           console.error("Error starting scanner", err);
@@ -65,7 +74,6 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, pauseFocus = fa
       };
       startScanner();
     } else {
-      // Cleanup
       if (scannerRef.current && scannerRef.current.isScanning) {
         scannerRef.current.stop().catch(console.error);
       }
@@ -81,45 +89,72 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, pauseFocus = fa
   const handleScanProcess = async (value: string) => {
     if (syncStatus !== 'idle' || lastScanResult.status !== 'idle') return;
 
-    // Stop camera temporarily
     setIsCameraActive(false); 
     setInput(value);
 
     const normalizedInput = value.trim();
+    
+    // Optimistic user lookup for quick feedback (optional, assuming onScan handles logic too)
     const user = users.find(u => u.phone === normalizedInput || u.studentId === normalizedInput);
+    const isCheckOut = user?.status === 'checked-in';
 
-    if (user) {
-      if (user.status === 'checked-out') {
-        setLastScanResult({ status: 'error', message: 'ลงทะเบียนออกไปแล้ว', subMessage: 'Already Checked Out' });
-        setTimeout(handleReset, 3000);
-        return;
-      }
-
-      setSyncStatus('syncing');
-      const isCheckOut = user.status === 'checked-in';
+    setSyncStatus('syncing');
       
-      try {
-        await onScan(normalizedInput);
-        
-        setSyncStatus('success');
-        setLastScanResult({ 
-          status: 'success', 
-          message: isCheckOut ? 'ลงทะเบียนออกสำเร็จ' : 'ลงทะเบียนเข้าสำเร็จ', 
-          subMessage: isCheckOut ? 'Check-out Success' : 'Check-in Success',
-          type: isCheckOut ? 'out' : 'in',
-          user: { ...user, status: isCheckOut ? 'checked-out' : 'checked-in' }
-        });
+    try {
+      await onScan(normalizedInput);
+      
+      setSyncStatus('success');
+      setLastScanResult({ 
+        status: 'success', 
+        message: isCheckOut ? 'ลงทะเบียนออกสำเร็จ' : 'ลงทะเบียนเข้าสำเร็จ', 
+        subMessage: isCheckOut ? 'Check-out Success' : 'Check-in Success',
+        type: isCheckOut ? 'out' : 'in',
+        user: user ? { ...user, status: isCheckOut ? 'checked-out' : 'checked-in' } : undefined
+      });
 
-        if (autoSave) setTimeout(() => handleSaveProof(user, isCheckOut ? 'out' : 'in'), 1200);
-        setTimeout(handleReset, 4000);
-      } catch (error) {
-        setSyncStatus('error');
-        setLastScanResult({ status: 'error', message: 'บันทึกข้อมูลล้มเหลว', subMessage: 'Please check internet connection' });
-        setTimeout(handleReset, 4000);
+      if (user && autoSave) setTimeout(() => handleSaveProof(user, isCheckOut ? 'out' : 'in'), 1200);
+      
+      // Auto Reset after success
+      setTimeout(handleReset, 4000);
+
+    } catch (error: any) {
+      setSyncStatus('error');
+      const errStr = String(error.message);
+
+      if (errStr === 'USER_NOT_FOUND') {
+        setLastScanResult({ 
+            status: 'error', 
+            message: 'ไม่พบข้อมูล', 
+            subMessage: 'กำลังนำทางไปหน้าลงทะเบียน...' 
+        });
+        
+        // Redirect logic
+        setTimeout(() => {
+            if (onRegisterRedirect) {
+                handleReset();
+                onRegisterRedirect(normalizedInput);
+            } else {
+                handleReset();
+            }
+        }, 2000);
+
+      } else if (errStr.startsWith('DUPLICATE_SCAN')) {
+        const remaining = parseInt(errStr.split(':')[1]) || 300;
+        setCooldown(remaining);
+        setLastScanResult({ 
+            status: 'error', 
+            message: 'ห้ามสแกนซ้ำ', 
+            subMessage: 'กรุณารอสักครู่ก่อนสแกนใหม่' 
+        });
+        // Do NOT auto-reset here, wait for cooldown or user dismiss
+      } else {
+        setLastScanResult({ 
+            status: 'error', 
+            message: 'บันทึกข้อมูลล้มเหลว', 
+            subMessage: 'Please check internet connection' 
+        });
+        setTimeout(handleReset, 3000);
       }
-    } else {
-      setLastScanResult({ status: 'error', message: 'ไม่พบรายชื่อนี้', subMessage: 'User Not Found' });
-      setTimeout(handleReset, 3000);
     }
   };
 
@@ -140,8 +175,8 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, pauseFocus = fa
     setLastScanResult({ status: 'idle', message: '' });
     setSyncStatus('idle');
     setInput('');
-    // Note: User has to manually start camera again to prevent accidental loops, 
-    // or uncomment below to auto-restart:
+    setCooldown(0);
+    // Optional: Auto restart camera
     // setIsCameraActive(true); 
   };
 
@@ -156,18 +191,18 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, pauseFocus = fa
         <div className="flex items-center gap-2">
            {syncStatus === 'syncing' && (
              <span className="flex items-center gap-1.5 text-xs font-bold text-violet-500 animate-pulse bg-violet-50 px-3 py-1 rounded-full">
-                <Loader2 className="w-3 h-3 animate-spin" /> กำลังส่งข้อมูลไปยัง Google Sheets...
+                <Loader2 className="w-3 h-3 animate-spin" /> กำลังตรวจสอบ...
              </span>
            )}
            {syncStatus === 'success' && (
              <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full">
-                <CloudSync className="w-3 h-3" /> เชื่อมต่อคลาวด์สำเร็จ
+                <CloudSync className="w-3 h-3" /> บันทึกสำเร็จ
              </span>
            )}
         </div>
         <label className="flex items-center gap-2 text-sm text-slate-500 cursor-pointer bg-white px-3 py-1.5 rounded-full shadow-sm border border-slate-100">
           <input type="checkbox" checked={autoSave} onChange={e => setAutoSave(e.target.checked)} className="rounded text-violet-500" />
-          <span className="font-medium">Auto Save Proof</span>
+          <span className="font-medium">Auto Save</span>
         </label>
       </div>
 
@@ -185,7 +220,7 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, pauseFocus = fa
                     <Loader2 className="w-20 h-20 text-violet-400 animate-spin" />
                     <CloudSync className="w-8 h-8 text-white absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
                   </div>
-                  <p className="text-violet-200 font-bold text-lg animate-pulse tracking-wide">กำลังบันทึกข้อมูล...</p>
+                  <p className="text-violet-200 font-bold text-lg animate-pulse tracking-wide">กำลังประมวลผล...</p>
                </div>
             ) : (
                <div className="flex flex-col items-center">
@@ -203,8 +238,8 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, pauseFocus = fa
             <div className="mb-4 bg-white/20 p-4 rounded-full backdrop-blur-sm animate-bounce">
               <CheckCircle2 className="w-16 h-16 text-white" />
             </div>
-            <h2 className="text-2xl font-bold">{lastScanResult.user?.name}</h2>
-            <p className="opacity-90 mt-1 font-mono bg-black/10 px-3 py-1 rounded-lg">{lastScanResult.user?.studentId}</p>
+            <h2 className="text-2xl font-bold">{lastScanResult.user?.name || 'บันทึกสำเร็จ'}</h2>
+            <p className="opacity-90 mt-1 font-mono bg-black/10 px-3 py-1 rounded-lg">{lastScanResult.user?.studentId || input}</p>
             
             <div className="mt-6 flex flex-col gap-3 w-full max-w-xs">
                <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-md">
@@ -223,10 +258,27 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, pauseFocus = fa
         {/* Error Overlay */}
         {lastScanResult.status === 'error' && (
           <div className="absolute inset-0 bg-rose-500 flex flex-col items-center justify-center text-white p-6 animate-in zoom-in z-20">
-            <XCircle className="w-20 h-20 mb-4 opacity-90" />
-            <h2 className="text-2xl font-bold">{lastScanResult.message}</h2>
-            <p className="opacity-90">{lastScanResult.subMessage}</p>
-            <button onClick={handleReset} className="mt-8 bg-white/20 hover:bg-white/30 px-8 py-3 rounded-2xl font-bold backdrop-blur-md">ลองใหม่</button>
+            {cooldown > 0 ? (
+               <div className="text-center">
+                  <div className="mb-4 inline-block p-4 bg-white/20 rounded-full animate-pulse">
+                     <Clock className="w-16 h-16 text-white" />
+                  </div>
+                  <h2 className="text-3xl font-black mb-2">{Math.floor(cooldown / 60)}:{String(cooldown % 60).padStart(2, '0')}</h2>
+                  <p className="opacity-90 text-lg">{lastScanResult.message}</p>
+                  <p className="text-sm opacity-75 mt-2 max-w-xs mx-auto">อุปกรณ์นี้เพิ่งสแกนรหัสนี้ไป กรุณารอก่อนสแกนซ้ำ</p>
+                  <button onClick={handleReset} className="mt-6 text-sm font-bold underline opacity-60 hover:opacity-100">ข้ามการรอ (Force Scan)</button>
+               </div>
+            ) : (
+               <>
+                  <XCircle className="w-20 h-20 mb-4 opacity-90" />
+                  <h2 className="text-2xl font-bold">{lastScanResult.message}</h2>
+                  <p className="opacity-90">{lastScanResult.subMessage}</p>
+                  {/* Hide Retry button if auto-redirecting */}
+                  {lastScanResult.message !== 'ไม่พบข้อมูล' && (
+                      <button onClick={handleReset} className="mt-8 bg-white/20 hover:bg-white/30 px-8 py-3 rounded-2xl font-bold backdrop-blur-md">ลองใหม่</button>
+                  )}
+               </>
+            )}
           </div>
         )}
       </div>
@@ -264,7 +316,7 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, pauseFocus = fa
         </form>
       </div>
 
-      {/* Hidden Proof Container (Same as before) */}
+      {/* Hidden Proof Container */}
       <div className="absolute -left-[9999px] top-0">
         <div ref={proofRef} className="w-[400px] bg-white p-8 border-[6px] border-violet-100 rounded-3xl flex flex-col items-center text-center">
           <h1 className="text-xl font-bold text-slate-300 mb-4 tracking-widest uppercase">System Proof</h1>

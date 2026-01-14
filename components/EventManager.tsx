@@ -6,21 +6,39 @@ import { Plus, Edit3, Trash2, Save, X, Calendar, MapPin, AlignLeft } from 'lucid
 
 interface Props {
   events: Event[];
-  onSave: (event: Event) => void;
+  onCreate: (event: Event) => void;
+  onUpdate: (event: Event) => void;
   onDelete: (id: string) => void;
 }
 
-export const EventManager: React.FC<Props> = ({ events, onSave, onDelete }) => {
+export const EventManager: React.FC<Props> = ({ events, onCreate, onUpdate, onDelete }) => {
   const [editing, setEditing] = useState<Event | null>(null);
 
   const handleNew = () => {
     setEditing({
-      id: 'e' + Date.now(),
+      id: '', // New event has empty ID initially
       name: '',
       date: new Date().toISOString().split('T')[0],
       location: '',
       description: ''
     });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editing) return;
+
+    if (!editing.id) {
+       // Create Mode
+       onCreate({
+         ...editing,
+         id: 'evt_' + Date.now()
+       });
+    } else {
+       // Update Mode
+       onUpdate(editing);
+    }
+    setEditing(null);
   };
 
   return (
@@ -58,10 +76,10 @@ export const EventManager: React.FC<Props> = ({ events, onSave, onDelete }) => {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-[2.5rem] p-8 max-w-lg w-full shadow-2xl animate-in zoom-in-95">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold text-slate-800">{editing.name ? 'แก้ไขกิจกรรม' : 'สร้างกิจกรรมใหม่'}</h3>
+              <h3 className="text-2xl font-bold text-slate-800">{editing.id ? 'แก้ไขกิจกรรม' : 'สร้างกิจกรรมใหม่'}</h3>
               <button onClick={() => setEditing(null)} className="p-2 hover:bg-slate-50 rounded-full transition-colors"><X className="w-6 h-6 text-slate-400" /></button>
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); onSave(editing); setEditing(null); }} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-400 uppercase">ชื่อกิจกรรม</label>
                 <input required type="text" value={editing.name} onChange={e=>setEditing({...editing, name: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-2xl border-0 focus:ring-4 focus:ring-violet-100 outline-none" />
