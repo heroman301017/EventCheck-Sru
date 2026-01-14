@@ -11,6 +11,7 @@ export interface SystemSettings {
   isRegistrationOpen: boolean;
   isScanningOpen: boolean;
   allowPublicDashboard: boolean;
+  ownerCredit?: string;
 }
 
 export interface User {

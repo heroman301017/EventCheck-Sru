@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { UserPlus, BookOpen, GraduationCap, Phone, User, CreditCard } from 'lucide-react';
+import { UserPlus, BookOpen, GraduationCap, Phone, User, CreditCard, AlertTriangle, MapPin } from 'lucide-react';
 
 interface Props {
   eventName: string;
@@ -62,6 +62,15 @@ export const RegistrationForm: React.FC<Props> = ({ eventName, onRegister, initi
           <div className="space-y-2 md:col-span-2">
             <label className="text-sm font-bold text-slate-600 flex items-center gap-2"><GraduationCap className="w-4 h-4" /> สาขาวิชา</label>
             <input required type="text" value={form.major} onChange={e=>setForm({...form, major: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border-0 rounded-2xl focus:ring-4 focus:ring-violet-100 transition-all outline-none" placeholder="ระบุสาขาวิชา" />
+          </div>
+        </div>
+
+        {/* Warning Message */}
+        <div className="w-full bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-start gap-3 mt-4">
+          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-800 space-y-1">
+            <p className="font-bold">คำเตือน: การลงทะเบียนแทนกันถือเป็นความผิด</p>
+            <p className="opacity-90 leading-relaxed">ระบบจะบันทึกข้อมูลตำแหน่ง (<MapPin className="w-3 h-3 inline" /> Location) และประวัติการลงทะเบียนของท่านไว้เพื่อการตรวจสอบสิทธิ์</p>
           </div>
         </div>
         

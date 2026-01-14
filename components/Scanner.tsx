@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
-import { ScanLine, ArrowRight, LogOut, LogIn, XCircle, Loader2, CheckCircle2, CloudSync, Camera, CameraOff, Clock } from 'lucide-react';
+import { ScanLine, ArrowRight, LogOut, LogIn, XCircle, Loader2, CheckCircle2, CloudSync, Camera, CameraOff, Clock, AlertTriangle, MapPin } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { Html5Qrcode } from 'html5-qrcode';
 
@@ -313,6 +313,15 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
             )}
           </div>
         )}
+      </div>
+
+      {/* Warning Message */}
+      <div className="w-full max-w-md bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-start gap-3">
+        <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+        <div className="text-xs text-amber-800 space-y-1">
+          <p className="font-bold">คำเตือน: การลงทะเบียนแทนกันถือเป็นความผิด</p>
+          <p className="opacity-90 leading-relaxed">ระบบจะบันทึกข้อมูลตำแหน่ง (<MapPin className="w-3 h-3 inline" /> Location) และประวัติการลงทะเบียนของท่านไว้เพื่อการตรวจสอบสิทธิ์</p>
+        </div>
       </div>
 
       <div className="w-full max-w-md space-y-3">

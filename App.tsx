@@ -8,7 +8,7 @@ import { Scanner } from './components/Scanner';
 import { 
   QrCode, Lock, Unlock, RefreshCw, 
   Calendar, MapPin, Settings, Loader2, ChevronRight,
-  UserPlus, Scan, Home as HomeIcon, Users, LayoutDashboard
+  UserPlus, Scan, Home as HomeIcon, Users, LayoutDashboard, Save, Type
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -32,7 +32,8 @@ const App: React.FC = () => {
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
     isRegistrationOpen: true,
     isScanningOpen: true,
-    allowPublicDashboard: true
+    allowPublicDashboard: true,
+    ownerCredit: 'Developed by EventCheck System'
   });
   
   const [isLoading, setIsLoading] = useState(true);
@@ -72,7 +73,7 @@ const App: React.FC = () => {
       }
       
       if (events.length === 0) setEvents(data.events || []);
-      setSystemSettings(data.settings || systemSettings);
+      setSystemSettings(prev => ({ ...prev, ...data.settings }));
       
       if (data.events?.length > 0 && !selectedEventId) {
         setSelectedEventId(data.events[0].id);
@@ -111,6 +112,11 @@ const App: React.FC = () => {
       console.error("Post Action Error:", error);
       return false; 
     }
+  };
+
+  const handleUpdateSettings = async (newSettings: SystemSettings) => {
+    setSystemSettings(newSettings);
+    await postAction({ action: "updateSettings", settings: newSettings });
   };
 
   const handleCheckIn = async (scannedValue: string) => {
@@ -330,7 +336,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6 overflow-y-auto">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6 overflow-y-auto pb-20">
         {activeTab === 'home' && (
           <div className="h-full flex flex-col items-center justify-center space-y-12 py-10 animate-in fade-in zoom-in duration-500">
              <div className="text-center space-y-4 max-w-md">
@@ -457,23 +463,58 @@ const App: React.FC = () => {
                     />
                  </div>
                ) : (
-                 <EventManager 
-                    events={events} 
-                    onCreate={handleCreateEvent}
-                    onUpdate={handleUpdateEvent}
-                    onDelete={handleDeleteEvent}
-                 />
+                 <div className="space-y-8">
+                   {/* Owner/System Config Section */}
+                   <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                      <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <Settings className="w-5 h-5 text-slate-400" /> ตั้งค่าระบบทั่วไป
+                      </h3>
+                      <div className="flex flex-col md:flex-row gap-4 items-end">
+                        <div className="w-full">
+                          <label className="text-xs font-bold text-slate-400 uppercase mb-1 flex items-center gap-1"><Type className="w-3 h-3" /> ข้อความเจ้าของระบบ (Footer Credit)</label>
+                          <input 
+                            type="text" 
+                            value={systemSettings.ownerCredit || ''} 
+                            onChange={(e) => setSystemSettings(prev => ({...prev, ownerCredit: e.target.value}))}
+                            placeholder="เช่น Developed by IT Team"
+                            className="w-full px-4 py-3 bg-slate-50 rounded-2xl border-0 focus:ring-4 focus:ring-violet-100 outline-none"
+                          />
+                        </div>
+                        <button 
+                          onClick={() => handleUpdateSettings(systemSettings)}
+                          className="px-6 py-3 bg-slate-800 text-white rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-700 transition-colors whitespace-nowrap"
+                        >
+                          <Save className="w-4 h-4" /> บันทึก
+                        </button>
+                      </div>
+                   </div>
+
+                   <EventManager 
+                      events={events} 
+                      onCreate={handleCreateEvent}
+                      onUpdate={handleUpdateEvent}
+                      onDelete={handleDeleteEvent}
+                   />
+                 </div>
                )}
              </div>
           </div>
         )}
       </main>
 
+      {/* Global Footer with Editable Owner Credit */}
+      <footer className="bg-white py-4 border-t border-slate-100 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 text-center">
+           <p className="text-xs text-slate-400 font-medium">{systemSettings.ownerCredit || 'Developed by EventCheck System'}</p>
+        </div>
+      </footer>
+
       {showLogin && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-[2.5rem] p-8 max-w-xs w-full shadow-2xl">
              <div className="text-center mb-6"><Lock className="w-12 h-12 text-violet-500 mx-auto mb-2" /><h3 className="text-xl font-bold text-slate-800">Admin Login</h3></div>
-             <form onSubmit={(e) => { e.preventDefault(); if(password==='1234'){ setIsAdmin(true); setShowLogin(false); setPassword(''); } else alert('PIN ไม่ถูกต้อง'); }} className="space-y-4">
+             {/* Updated Password to 9999 */}
+             <form onSubmit={(e) => { e.preventDefault(); if(password==='9999'){ setIsAdmin(true); setShowLogin(false); setPassword(''); } else alert('PIN ไม่ถูกต้อง'); }} className="space-y-4">
                <input type="password" value={password} onChange={e=>setPassword(e.target.value)} autoFocus className="w-full p-4 bg-slate-50 rounded-2xl text-center font-mono text-2xl outline-none focus:ring-4 focus:ring-violet-100" placeholder="****" />
                <button type="submit" className="w-full bg-slate-800 text-white py-4 rounded-2xl font-bold">Unlock Admin</button>
                <button type="button" onClick={()=>setShowLogin(false)} className="w-full text-slate-400 text-sm font-medium">ยกเลิก</button>

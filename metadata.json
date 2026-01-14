@@ -2,6 +2,7 @@
   "name": "EventCheck - Smart Registration",
   "description": "A QR Code check-in system with real-time statistics and reporting capabilities.",
   "requestFramePermissions": [
-    "camera"
+    "camera",
+    "geolocation"
   ]
 }
