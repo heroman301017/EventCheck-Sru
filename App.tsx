@@ -142,6 +142,11 @@ const App: React.FC = () => {
       throw new Error("USER_NOT_FOUND");
     }
 
+    // *** New Logic: Prevent action if already checked-out ***
+    if (user.status === 'checked-out') {
+      throw new Error("ALREADY_CHECKED_OUT");
+    }
+
     // Update local cooldown
     setRecentScans(prev => ({
       ...prev,

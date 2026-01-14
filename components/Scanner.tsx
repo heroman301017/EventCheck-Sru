@@ -173,6 +173,13 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
             message: 'ห้ามสแกนซ้ำ', 
             subMessage: 'กรุณารอสักครู่ก่อนสแกนใหม่' 
         });
+      } else if (errStr === 'ALREADY_CHECKED_OUT') {
+        setLastScanResult({ 
+            status: 'error', 
+            message: 'สแกนออกเรียบร้อยแล้ว', 
+            subMessage: 'กรุณาติดต่อผู้ดูแลระบบ' 
+        });
+        // Allow manual reset for this error
       } else {
         setLastScanResult({ 
             status: 'error', 
