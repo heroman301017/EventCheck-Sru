@@ -19,7 +19,7 @@ import { EventShowcase } from './components/EventShowcase';
 import { ConfirmationModal } from './components/ConfirmationModal';
 
 // *** ตรวจสอบ URL ของคุณให้ถูกต้อง ***
-const API_URL = "https://script.google.com/macros/s/AKfycbzkyagLeBoBZbzEEe0lsd0G1JpYEJ4QDdc9FijWEps9zMZ6gw7pkkGbQQewgO8BjjA/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwF9XyGTppkSk_kcJ3PmbZlIjIUgxa6lMuMxvo3R97nB1hvPwQKjFj0R6GYeA6LxA/exec";
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'home' | 'overview' | 'scan' | 'register' | 'events'>('home');
@@ -59,8 +59,16 @@ const App: React.FC = () => {
       if (!response.ok) throw new Error("Fetch failed");
       const data = await response.json();
       
-      setUsers(data.users || []);
-      setEvents(data.events || []);
+      // Merge logic could be implemented here to prevent overwriting local unsaved changes
+      // For now, we trust the initial load
+      if (users.length === 0) {
+         setUsers(data.users || []);
+      } else {
+         // Optional: Update only if needed, or provide a manual refresh button
+         // setUsers(data.users || []); 
+      }
+      
+      if (events.length === 0) setEvents(data.events || []);
       setSystemSettings(data.settings || systemSettings);
       
       if (data.events?.length > 0 && !selectedEventId) {
@@ -74,6 +82,9 @@ const App: React.FC = () => {
       }
     } catch (error) {
       console.error("Fetch Error:", error);
+      // Fallback: If fetch fails, ensure app can still open with initial/cached data
+      if (users.length === 0) setUsers(INITIAL_USERS);
+      if (events.length === 0) setEvents(INITIAL_EVENTS);
     } finally {
       setIsLoading(false);
     }
@@ -87,50 +98,89 @@ const App: React.FC = () => {
 
   const postAction = async (payload: any) => {
     try {
-      console.log("Sending Payload:", payload); // ตรวจสอบข้อมูลใน Console
+      // Fire and forget strategy to prevent stale data from overwriting optimistic UI updates
       await fetch(API_URL, {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
       });
-      // หน่วงเวลาเพื่อความเสถียร
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      await fetchData();
       return true;
     } catch (error) {
       console.error("Post Action Error:", error);
-      throw error;
+      // Don't re-throw, as this often fails due to CORS but the request might have succeeded or is pending
+      return false; 
     }
   };
 
   const handleCheckIn = async (scannedValue: string) => {
-    const user = currentEventUsers.find(u => 
-      String(u.phone).trim() === String(scannedValue).trim() || 
-      String(u.studentId).trim() === String(scannedValue).trim()
-    );
+    const value = String(scannedValue).trim();
+    if (!value) throw new Error("Invalid input");
+
+    const cleanValue = normalizePhone(value);
+
+    // Robust matching logic: Match Student ID OR Phone, but ignore empty DB records
+    const user = currentEventUsers.find(u => {
+       const uPhone = String(u.phone || '').trim();
+       const uStudentId = String(u.studentId || '').trim();
+
+       // 1. Check Student ID (Exact match, ignore if DB has empty ID)
+       const isIdMatch = uStudentId !== '' && uStudentId === value;
+
+       // 2. Check Phone (Exact or Normalized, ignore if DB has empty Phone)
+       const isPhoneMatch = uPhone !== '' && (uPhone === value || normalizePhone(uPhone) === cleanValue);
+
+       return isIdMatch || isPhoneMatch;
+    });
     
     if (!user) {
       console.warn("User not found for scanned value:", scannedValue);
       throw new Error("User not found");
     }
 
-    const newStatus = (user.status === 'checked-in') ? 'checked-out' : 'checked-in';
     const now = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
     
-    // อัปเดต UI ล่วงหน้า
-    setUsers(prev => prev.map(u => (u.studentId === user.studentId && u.eventId === selectedEventId) ? {
-      ...u, 
-      status: newStatus as any, 
-      checkInTime: newStatus === 'checked-in' ? now : u.checkInTime,
-      checkOutTime: newStatus === 'checked-out' ? now : u.checkOutTime
-    } : u));
+    // Determine new status based on CURRENT state
+    let newStatus: 'checked-in' | 'checked-out' = 'checked-in';
+    if (user.status === 'checked-in') {
+      newStatus = 'checked-out';
+    }
+    
+    // Optimistic UI Update
+    setUsers(prev => prev.map(u => {
+      // Use ID for precise matching if available
+      if (u.id === user.id) {
+         let checkInTime = u.checkInTime;
+         let checkOutTime = u.checkOutTime;
 
-    // ส่งข้อมูลไป GAS
-    // Removed return keyword to match expected type (Promise<void>)
+         if (newStatus === 'checked-in') {
+            // Case: Check-In (or Re-Check-In)
+            checkInTime = now;
+            // Clear check-out time if re-entering
+            checkOutTime = undefined; 
+         } else {
+            // Case: Check-Out
+            // Preserve existing checkInTime, only update checkOutTime
+            checkOutTime = now;
+         }
+
+         return {
+           ...u,
+           status: newStatus,
+           checkInTime,
+           checkOutTime
+         };
+      }
+      return u;
+    }));
+
+    // Send to Google Sheets
+    // IMPORTANT: Send both studentId AND phone to ensure accurate matching on the server
+    // If fields are empty, send unique placeholder to prevent "empty matches empty" logic on backend
     await postAction({
       action: "checkIn",
-      studentId: String(user.studentId).trim(),
+      studentId: user.studentId ? String(user.studentId).trim() : `__NULL_ID_${Date.now()}__`,
+      phone: user.phone ? String(user.phone).trim() : `__NULL_PHONE_${Date.now()}__`, 
       eventId: String(selectedEventId).trim(),
       status: newStatus,
       time: now
@@ -296,6 +346,11 @@ const App: React.FC = () => {
                     <h2 className="text-2xl font-bold text-slate-800">{currentEvent.name}</h2>
                     <p className="text-slate-500 text-sm">{currentEvent.location} &bull; {formatThaiDate(currentEvent.date)}</p>
                  </div>
+                 {isAdmin && (
+                   <button onClick={fetchData} className="p-3 bg-white border border-slate-100 rounded-xl hover:bg-slate-50 text-slate-400 hover:text-violet-500 transition-colors">
+                      <RefreshCw className="w-5 h-5" />
+                   </button>
+                 )}
               </div>
               <Dashboard stats={stats} />
               <UserList 
