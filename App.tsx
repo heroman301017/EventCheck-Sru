@@ -20,6 +20,7 @@ import { ConfirmationModal } from './components/ConfirmationModal';
 
 // *** ตรวจสอบ URL ของคุณให้ถูกต้อง ***
 const API_URL = "https://script.google.com/macros/s/AKfycbwF9XyGTppkSk_kcJ3PmbZlIjIUgxa6lMuMxvo3R97nB1hvPwQKjFj0R6GYeA6LxA/exec";
+const TARGET_SPREADSHEET_ID = "1nZlbcEAsehvi_fIehXASjgiLiplqB9nOxAWTD2KbmG8";
 
 const App: React.FC = () => {
   // Removed 'overview' from activeTab type
@@ -210,7 +211,13 @@ const App: React.FC = () => {
   const handleCreateEvent = async (event: Event) => {
     setEvents(prev => [...prev, event]);
     setSelectedEventId(event.id);
-    await postAction({ action: "createEvent", event });
+    // Send specific Spreadsheet ID and Sheet Name for event creation
+    await postAction({ 
+      action: "createEvent", 
+      event,
+      spreadsheetId: TARGET_SPREADSHEET_ID,
+      sheetName: "Events"
+    });
   };
 
   const handleUpdateEvent = async (event: Event) => {
