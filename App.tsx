@@ -211,10 +211,16 @@ const App: React.FC = () => {
   const handleCreateEvent = async (event: Event) => {
     setEvents(prev => [...prev, event]);
     setSelectedEventId(event.id);
-    // Send specific Spreadsheet ID and Sheet Name for event creation
+    
+    // Send payload with both 'values' and 'row' to support different backend conventions
+    // Columns: id, name, date, location, description
+    const rowData = [event.id, event.name, event.date, event.location, event.description || '-'];
+    
     await postAction({ 
       action: "createEvent", 
       event,
+      values: rowData,
+      row: rowData,
       spreadsheetId: TARGET_SPREADSHEET_ID,
       sheetName: "Events"
     });
@@ -222,7 +228,17 @@ const App: React.FC = () => {
 
   const handleUpdateEvent = async (event: Event) => {
     setEvents(prev => prev.map(e => e.id === event.id ? event : e));
-    await postAction({ action: "updateEvent", event });
+    
+    const rowData = [event.id, event.name, event.date, event.location, event.description || '-'];
+    
+    await postAction({ 
+      action: "updateEvent", 
+      event,
+      values: rowData,
+      row: rowData,
+      spreadsheetId: TARGET_SPREADSHEET_ID,
+      sheetName: "Events"
+    });
   };
 
   const handleDeleteEvent = (id: string) => {
@@ -236,7 +252,12 @@ const App: React.FC = () => {
         if (selectedEventId === id && events.length > 0) {
           setSelectedEventId(events[0].id);
         }
-        await postAction({ action: "deleteEvent", id });
+        await postAction({ 
+          action: "deleteEvent", 
+          id,
+          spreadsheetId: TARGET_SPREADSHEET_ID,
+          sheetName: "Events"
+        });
       }
     });
   };
