@@ -23,6 +23,7 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
   const inputRef = useRef<HTMLInputElement>(null);
   const proofRef = useRef<HTMLDivElement>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scannerMountingRef = useRef<boolean>(false);
 
   // Focus Management
   useEffect(() => {
@@ -48,53 +49,81 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
 
   // Camera Logic
   useEffect(() => {
-    if (isCameraActive && syncStatus === 'idle' && lastScanResult.status === 'idle') {
-      const startScanner = async () => {
-        try {
-          if (!scannerRef.current) {
-            scannerRef.current = new Html5Qrcode("reader");
-          }
-          await scannerRef.current.start(
-            { facingMode: "environment" },
-            {
-              fps: 10,
-              qrbox: { width: 250, height: 250 },
-              aspectRatio: 1.0
-            },
-            (decodedText) => {
-              handleScanProcess(decodedText);
-            },
-            (errorMessage) => { }
-          );
-        } catch (err) {
-          console.error("Error starting scanner", err);
-          setIsCameraActive(false);
-          alert("ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการเข้าถึงกล้อง");
-        }
-      };
-      startScanner();
-    } else {
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop().catch(console.error);
-      }
-    }
+    // Flag to handle race conditions during async start/stop
+    let ignore = false;
 
-    return () => {
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop().catch(console.error);
+    const manageScanner = async () => {
+      if (!isCameraActive) {
+         // Stop scanning
+         if (scannerRef.current && (scannerRef.current.isScanning || scannerMountingRef.current)) {
+            try {
+               await scannerRef.current.stop();
+               scannerRef.current.clear();
+            } catch (err) {
+               // Ignore "not running" errors
+               console.debug("Stop scanner error:", err);
+            }
+            scannerMountingRef.current = false;
+         }
+         return;
+      }
+
+      // Start scanning
+      if (isCameraActive && !scannerMountingRef.current) {
+         try {
+            scannerMountingRef.current = true;
+            if (!scannerRef.current) {
+               scannerRef.current = new Html5Qrcode("reader");
+            }
+            
+            await scannerRef.current.start(
+               { facingMode: "environment" },
+               {
+                  fps: 10,
+                  qrbox: { width: 250, height: 250 },
+                  aspectRatio: 1.0
+               },
+               (decodedText) => {
+                  if (!ignore) handleScanProcess(decodedText);
+               },
+               (errorMessage) => { 
+                  // Frame errors are common, ignore them
+               }
+            );
+         } catch (err) {
+            console.error("Error starting scanner", err);
+            if (!ignore) {
+               setIsCameraActive(false);
+               alert("ไม่สามารถเปิดกล้องได้ หรือกล้องกำลังถูกใช้งานอยู่");
+            }
+            scannerMountingRef.current = false;
+         }
       }
     };
-  }, [isCameraActive, syncStatus, lastScanResult.status]);
+
+    manageScanner();
+
+    return () => {
+      ignore = true;
+      // Cleanup attempt
+      if (scannerRef.current && scannerRef.current.isScanning) {
+         scannerRef.current.stop().catch(err => console.debug("Cleanup stop error:", err));
+         scannerMountingRef.current = false;
+      }
+    };
+    // Removed syncStatus and lastScanResult from dependencies to prevent unintended restarts/stops
+  }, [isCameraActive]);
 
   const handleScanProcess = async (value: string) => {
     if (syncStatus !== 'idle' || lastScanResult.status !== 'idle') return;
 
+    // We keep isCameraActive = true theoretically, but we want to pause visuals
+    // Or we turn it off. Turning it off triggers the useEffect cleanup -> stop().
     setIsCameraActive(false); 
     setInput(value);
 
     const normalizedInput = value.trim();
     
-    // Optimistic user lookup for quick feedback (optional, assuming onScan handles logic too)
     const user = users.find(u => u.phone === normalizedInput || u.studentId === normalizedInput);
     const isCheckOut = user?.status === 'checked-in';
 
@@ -114,7 +143,6 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
 
       if (user && autoSave) setTimeout(() => handleSaveProof(user, isCheckOut ? 'out' : 'in'), 1200);
       
-      // Auto Reset after success
       setTimeout(handleReset, 4000);
 
     } catch (error: any) {
@@ -128,7 +156,6 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
             subMessage: 'กำลังนำทางไปหน้าลงทะเบียน...' 
         });
         
-        // Redirect logic
         setTimeout(() => {
             if (onRegisterRedirect) {
                 handleReset();
@@ -146,7 +173,6 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
             message: 'ห้ามสแกนซ้ำ', 
             subMessage: 'กรุณารอสักครู่ก่อนสแกนใหม่' 
         });
-        // Do NOT auto-reset here, wait for cooldown or user dismiss
       } else {
         setLastScanResult({ 
             status: 'error', 
@@ -176,8 +202,7 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
     setSyncStatus('idle');
     setInput('');
     setCooldown(0);
-    // Optional: Auto restart camera
-    // setIsCameraActive(true); 
+    // Do not auto-restart camera to avoid loops
   };
 
   const handleSubmit = (e?: React.FormEvent) => {
