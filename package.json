@@ -16,7 +16,8 @@
     "qrcode.react": "^4.2.0",
     "html-to-image": "^1.11.11",
     "jspdf": "2.5.1",
-    "jspdf-autotable": "3.8.2"
+    "jspdf-autotable": "3.8.2",
+    "html5-qrcode": "2.3.8"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
