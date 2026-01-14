@@ -8,7 +8,7 @@ import { Scanner } from './components/Scanner';
 import { 
   QrCode, Lock, Unlock, RefreshCw, 
   Calendar, MapPin, Settings, Loader2, ChevronRight,
-  UserPlus, Scan, Home as HomeIcon
+  UserPlus, Scan, Home as HomeIcon, Users, LayoutDashboard
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -22,7 +22,11 @@ import { ConfirmationModal } from './components/ConfirmationModal';
 const API_URL = "https://script.google.com/macros/s/AKfycbwF9XyGTppkSk_kcJ3PmbZlIjIUgxa6lMuMxvo3R97nB1hvPwQKjFj0R6GYeA6LxA/exec";
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'home' | 'overview' | 'scan' | 'register' | 'events'>('home');
+  // Removed 'overview' from activeTab type
+  const [activeTab, setActiveTab] = useState<'home' | 'scan' | 'register' | 'events'>('home');
+  // New state for Manage sub-tabs
+  const [manageSubTab, setManageSubTab] = useState<'events' | 'users'>('users');
+  
   const [users, setUsers] = useState<User[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
@@ -299,9 +303,7 @@ const App: React.FC = () => {
               {(systemSettings.isScanningOpen || isAdmin) && (
                 <button onClick={() => setActiveTab('scan')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'scan' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}>สแกน</button>
               )}
-              {(systemSettings.allowPublicDashboard || isAdmin) && (
-                <button onClick={() => setActiveTab('overview')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'overview' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}>แดชบอร์ด</button>
-              )}
+              {/* Removed Standalone Dashboard Button */}
               {isAdmin && <button onClick={() => setActiveTab('events')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'events' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}>จัดการ</button>}
             </nav>
             <button onClick={() => isAdmin ? setIsAdmin(false) : setShowLogin(true)} className={`p-2 rounded-full transition-all ${isAdmin ? 'bg-amber-100 text-amber-500' : 'bg-slate-100 text-slate-400'}`}>
@@ -311,7 +313,8 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {activeTab !== 'events' && activeTab !== 'register' && activeTab !== 'home' && events.length > 0 && (
+      {/* Show Event Selector only if NOT on Home */}
+      {activeTab !== 'home' && activeTab !== 'register' && events.length > 0 && (
         <div className="bg-violet-600 text-white py-2 shadow-inner">
            <div className="max-w-7xl mx-auto px-4 flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
               <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">Event:</span>
@@ -358,16 +361,34 @@ const App: React.FC = () => {
         )}
 
         {activeTab === 'scan' && (
-           <div className="space-y-6">
+           <div className="space-y-8 pb-10">
               <div className="flex justify-start max-w-2xl mx-auto w-full">
                 <button onClick={() => setActiveTab('home')} className="flex items-center gap-2 text-slate-400 hover:text-violet-500 font-bold transition-all"><ChevronRight className="w-5 h-5 rotate-180" /> กลับหน้าหลัก</button>
               </div>
+              
+              {/* Scanner Section */}
               <Scanner 
                 users={currentEventUsers} 
                 onScan={handleCheckIn} 
                 pauseFocus={showLogin || confirmState.isOpen}
                 onRegisterRedirect={handleScanRedirect}
               />
+
+              {/* Dashboard Section Moved Here */}
+              {(systemSettings.allowPublicDashboard || isAdmin) && (
+                <div className="w-full max-w-5xl mx-auto pt-8 border-t border-slate-200">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 bg-violet-100 text-violet-500 rounded-xl">
+                      <LayoutDashboard className="w-6 h-6" />
+                    </div>
+                    <div>
+                       <h2 className="text-xl font-bold text-slate-700">ภาพรวมสถิติ</h2>
+                       <p className="text-sm text-slate-400">ข้อมูลการเข้าร่วมงานแบบ Real-time</p>
+                    </div>
+                  </div>
+                  <Dashboard stats={stats} />
+                </div>
+              )}
            </div>
         )}
 
@@ -385,40 +406,61 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* Manage Section (Events & User Table) */}
         {activeTab === 'events' && (
-          <div className="w-full max-w-4xl mx-auto">
-             <EventManager 
-                events={events} 
-                onCreate={handleCreateEvent}
-                onUpdate={handleUpdateEvent}
-                onDelete={handleDeleteEvent}
-             />
-          </div>
-        )}
+          <div className="w-full max-w-5xl mx-auto space-y-6">
+             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+               <div>
+                  <h2 className="text-2xl font-bold text-slate-800">ระบบจัดการ</h2>
+                  <p className="text-slate-500 text-sm">Event Management & Participants</p>
+               </div>
+               
+               {/* Sub-tab Toggle */}
+               <div className="bg-slate-100 p-1 rounded-2xl flex">
+                  <button 
+                    onClick={() => setManageSubTab('users')} 
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${manageSubTab === 'users' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    <Users className="w-4 h-4" /> รายชื่อผู้เข้าร่วม
+                  </button>
+                  <button 
+                    onClick={() => setManageSubTab('events')} 
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${manageSubTab === 'events' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    <Settings className="w-4 h-4" /> ตั้งค่ากิจกรรม
+                  </button>
+               </div>
+             </div>
 
-        {activeTab === 'overview' && (
-           <div className="space-y-8 pb-10">
-              <div className="flex justify-between items-start">
-                 <div>
-                    <h2 className="text-2xl font-bold text-slate-800">{currentEvent.name}</h2>
-                    <p className="text-slate-500 text-sm">{currentEvent.location} &bull; {formatThaiDate(currentEvent.date)}</p>
+             {/* Content based on sub-tab */}
+             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+               {manageSubTab === 'users' ? (
+                 <div className="space-y-4">
+                    <div className="flex justify-between items-center bg-violet-50 p-4 rounded-2xl border border-violet-100">
+                       <span className="text-violet-700 font-bold text-sm">ข้อมูลสำหรับกิจกรรม: {currentEvent.name}</span>
+                       <button onClick={fetchData} className="p-2 bg-white rounded-lg text-violet-500 hover:bg-violet-100 shadow-sm transition-colors">
+                          <RefreshCw className="w-4 h-4" />
+                       </button>
+                    </div>
+                    <UserList 
+                      users={currentEventUsers} 
+                      isEditable={isAdmin} 
+                      onAddUser={(name, phone) => handleRegister({name, phone})} 
+                      onUpdateUser={handleUpdateUser} 
+                      onDeleteUser={handleDeleteUser} 
+                      onImportUsers={()=>{}} onExportCSV={()=>{}} onExportPDF={()=>{}} 
+                    />
                  </div>
-                 {isAdmin && (
-                   <button onClick={fetchData} className="p-3 bg-white border border-slate-100 rounded-xl hover:bg-slate-50 text-slate-400 hover:text-violet-500 transition-colors">
-                      <RefreshCw className="w-5 h-5" />
-                   </button>
-                 )}
-              </div>
-              <Dashboard stats={stats} />
-              <UserList 
-                 users={currentEventUsers} 
-                 isEditable={isAdmin} 
-                 onAddUser={(name, phone) => handleRegister({name, phone})} 
-                 onUpdateUser={handleUpdateUser} 
-                 onDeleteUser={handleDeleteUser} 
-                 onImportUsers={()=>{}} onExportCSV={()=>{}} onExportPDF={()=>{}} 
-              />
-           </div>
+               ) : (
+                 <EventManager 
+                    events={events} 
+                    onCreate={handleCreateEvent}
+                    onUpdate={handleUpdateEvent}
+                    onDelete={handleDeleteEvent}
+                 />
+               )}
+             </div>
+          </div>
         )}
       </main>
 
