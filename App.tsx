@@ -5,10 +5,11 @@ import { INITIAL_USERS, INITIAL_EVENTS, normalizePhone, formatThaiDate } from '.
 import { Dashboard } from './components/Dashboard';
 import { UserList } from './components/UserList';
 import { Scanner } from './components/Scanner';
+import { MapDashboard } from './components/MapDashboard';
 import { 
   QrCode, Lock, Unlock, RefreshCw, 
   Calendar, MapPin, Settings, Loader2, ChevronRight,
-  UserPlus, Scan, Home as HomeIcon, Users, LayoutDashboard, Save, Type
+  UserPlus, Scan, Home as HomeIcon, Users, LayoutDashboard, Save, Type, Map as MapIcon
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -19,14 +20,14 @@ import { EventShowcase } from './components/EventShowcase';
 import { ConfirmationModal } from './components/ConfirmationModal';
 
 // *** ตรวจสอบ URL ของคุณให้ถูกต้อง ***
-const API_URL = "https://script.google.com/macros/s/AKfycbwF9XyGTppkSk_kcJ3PmbZlIjIUgxa6lMuMxvo3R97nB1hvPwQKjFj0R6GYeA6LxA/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbziSo348l5sNxHU3kz0FB7fzQmIMUjgX5Bj7k5KYvs-8vjPTisRr7zLrHer4c2AZ9s/exec";
 const TARGET_SPREADSHEET_ID = "1nZlbcEAsehvi_fIehXASjgiLiplqB9nOxAWTD2KbmG8";
 
 const App: React.FC = () => {
   // Removed 'overview' from activeTab type
   const [activeTab, setActiveTab] = useState<'home' | 'scan' | 'register' | 'events'>('home');
   // New state for Manage sub-tabs
-  const [manageSubTab, setManageSubTab] = useState<'events' | 'users'>('users');
+  const [manageSubTab, setManageSubTab] = useState<'events' | 'users' | 'map'>('users');
   
   const [users, setUsers] = useState<User[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
@@ -69,11 +70,19 @@ const App: React.FC = () => {
       if (!response.ok) throw new Error("Fetch failed");
       const data = await response.json();
       
-      if (users.length === 0) {
-         setUsers(data.users || []);
-      }
+      // Always update users with normalized data from API
+      // Normalize User Data Keys (Location -> location)
+      const normalizedUsers = (data.users || []).map((u: any) => ({
+        ...u,
+        location: u.location || u.Location || u.LOCATION || undefined,
+        studentId: u.studentId || u.StudentId || '',
+        name: u.name || u.Name || '',
+        phone: u.phone || u.Phone || '',
+        status: (u.status || u.Status || 'pending').toLowerCase()
+      }));
+      setUsers(normalizedUsers);
       
-      if (events.length === 0) setEvents(data.events || []);
+      if (events.length === 0 || data.events?.length > 0) setEvents(data.events || []);
       setSystemSettings(prev => ({ ...prev, ...data.settings }));
       
       if (data.events?.length > 0 && !selectedEventId) {
@@ -105,7 +114,7 @@ const App: React.FC = () => {
       await fetch(API_URL, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
       });
       return true;
@@ -120,7 +129,7 @@ const App: React.FC = () => {
     await postAction({ action: "updateSettings", settings: newSettings });
   };
 
-  const handleCheckIn = async (scannedValue: string) => {
+  const handleCheckIn = async (scannedValue: string, meta?: { location: string; device: string }) => {
     const value = String(scannedValue).trim();
     if (!value) throw new Error("Invalid input");
 
@@ -168,6 +177,17 @@ const App: React.FC = () => {
       newStatus = 'checked-out';
     }
     
+    // Determine the location to save:
+    // 1. If new meta location is valid (contains comma), use it.
+    // 2. Else if user already has valid location, keep it.
+    // 3. Else fallback to meta location (error msg) or dash.
+    const hasValidNewLocation = meta?.location && meta.location.includes(',');
+    const hasValidOldLocation = user.location && user.location.includes(',');
+    
+    const finalLocation = hasValidNewLocation 
+        ? meta!.location 
+        : (hasValidOldLocation ? user.location : (meta?.location || '-'));
+
     setUsers(prev => prev.map(u => {
       if (u.id === user.id) {
          let checkInTime = u.checkInTime;
@@ -184,7 +204,9 @@ const App: React.FC = () => {
            ...u,
            status: newStatus,
            checkInTime,
-           checkOutTime
+           checkOutTime,
+           location: finalLocation,
+           device: meta?.device || u.device
          };
       }
       return u;
@@ -196,7 +218,10 @@ const App: React.FC = () => {
       phone: user.phone ? String(user.phone).trim() : `__NULL_PHONE_${Date.now()}__`, 
       eventId: String(selectedEventId).trim(),
       status: newStatus,
-      time: now
+      time: now,
+      // Add metadata
+      location: finalLocation,
+      device: meta?.device || '-'
     });
   };
 
@@ -212,32 +237,69 @@ const App: React.FC = () => {
     setEvents(prev => [...prev, event]);
     setSelectedEventId(event.id);
     
-    // Send payload with both 'values' and 'row' to support different backend conventions
-    // Columns: id, name, date, location, description
-    const rowData = [event.id, event.name, event.date, event.location, event.description || '-'];
+    // Explicit mapping for Google Sheets Columns: A-E
+    const rowData = [
+      event.id, 
+      event.name, 
+      event.date, 
+      event.location, 
+      event.description || '-'
+    ];
     
     await postAction({ 
       action: "createEvent", 
-      event,
-      values: rowData,
-      row: rowData,
+      
+      // Configuration
       spreadsheetId: TARGET_SPREADSHEET_ID,
-      sheetName: "Events"
+      sheetName: "Events", // Changed back to 'Events' (plural) to match original data
+      sheet: "Events",
+      
+      // Flatten properties
+      id: event.id,
+      name: event.name,
+      date: event.date,
+      location: event.location,
+      description: event.description || '-',
+
+      // Data array
+      event: event,
+      data: rowData,
+      values: rowData,
+      row: rowData
     });
   };
 
   const handleUpdateEvent = async (event: Event) => {
     setEvents(prev => prev.map(e => e.id === event.id ? event : e));
     
-    const rowData = [event.id, event.name, event.date, event.location, event.description || '-'];
+    const rowData = [
+      event.id, 
+      event.name, 
+      event.date, 
+      event.location, 
+      event.description || '-'
+    ];
     
     await postAction({ 
       action: "updateEvent", 
-      event,
-      values: rowData,
-      row: rowData,
+      
+      // Configuration
       spreadsheetId: TARGET_SPREADSHEET_ID,
-      sheetName: "Events"
+      sheetName: "Events", // Changed back to 'Events' (plural)
+      sheet: "Events",
+      
+      // Flatten properties
+      id: event.id,
+      name: event.name,
+      date: event.date,
+      location: event.location,
+      description: event.description || '-',
+      
+      // Data array
+      event: event,
+      data: rowData,
+      values: rowData,
+      row: rowData
     });
   };
 
@@ -254,9 +316,12 @@ const App: React.FC = () => {
         }
         await postAction({ 
           action: "deleteEvent", 
-          id,
+          id: id,
+          
+          // Configuration
           spreadsheetId: TARGET_SPREADSHEET_ID,
-          sheetName: "Events"
+          sheetName: "Events", // Changed back to 'Events' (plural)
+          sheet: "Events"
         });
       }
     });
@@ -445,7 +510,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Manage Section (Events & User Table) */}
+        {/* Manage Section (Events & User Table & Map) */}
         {activeTab === 'events' && (
           <div className="w-full max-w-5xl mx-auto space-y-6">
              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -460,20 +525,26 @@ const App: React.FC = () => {
                     onClick={() => setManageSubTab('users')} 
                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${manageSubTab === 'users' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                   >
-                    <Users className="w-4 h-4" /> รายชื่อผู้เข้าร่วม
+                    <Users className="w-4 h-4" /> รายชื่อ
+                  </button>
+                  <button 
+                    onClick={() => setManageSubTab('map')} 
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${manageSubTab === 'map' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    <MapIcon className="w-4 h-4" /> แผนที่
                   </button>
                   <button 
                     onClick={() => setManageSubTab('events')} 
                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${manageSubTab === 'events' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                   >
-                    <Settings className="w-4 h-4" /> ตั้งค่ากิจกรรม
+                    <Settings className="w-4 h-4" /> ตั้งค่า
                   </button>
                </div>
              </div>
 
              {/* Content based on sub-tab */}
              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-               {manageSubTab === 'users' ? (
+               {manageSubTab === 'users' && (
                  <div className="space-y-4">
                     <div className="flex justify-between items-center bg-violet-50 p-4 rounded-2xl border border-violet-100">
                        <span className="text-violet-700 font-bold text-sm">ข้อมูลสำหรับกิจกรรม: {currentEvent.name}</span>
@@ -490,7 +561,21 @@ const App: React.FC = () => {
                       onImportUsers={()=>{}} onExportCSV={()=>{}} onExportPDF={()=>{}} 
                     />
                  </div>
-               ) : (
+               )}
+
+               {manageSubTab === 'map' && (
+                  <div className="space-y-4">
+                      <div className="flex justify-between items-center bg-violet-50 p-4 rounded-2xl border border-violet-100">
+                         <span className="text-violet-700 font-bold text-sm">แผนที่การลงทะเบียน: {currentEvent.name}</span>
+                         <button onClick={fetchData} className="p-2 bg-white rounded-lg text-violet-500 hover:bg-violet-100 shadow-sm transition-colors">
+                            <RefreshCw className="w-4 h-4" />
+                         </button>
+                      </div>
+                      <MapDashboard users={currentEventUsers} />
+                  </div>
+               )}
+
+               {manageSubTab === 'events' && (
                  <div className="space-y-8">
                    {/* Owner/System Config Section */}
                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">

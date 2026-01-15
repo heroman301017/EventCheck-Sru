@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
-import { ScanLine, ArrowRight, LogOut, LogIn, XCircle, Loader2, CheckCircle2, CloudSync, Camera, CameraOff, Clock, AlertTriangle, MapPin } from 'lucide-react';
+import { ScanLine, ArrowRight, LogOut, LogIn, XCircle, Loader2, CheckCircle2, Cloud, Camera, CameraOff, Clock, AlertTriangle, MapPin } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { Html5Qrcode } from 'html5-qrcode';
 
 interface ScannerProps {
   users: User[];
-  onScan: (id: string) => Promise<void>;
+  onScan: (id: string, meta?: { location: string; device: string }) => Promise<void>;
   onRegisterRedirect?: (id: string) => void;
   pauseFocus?: boolean;
 }
@@ -114,6 +114,22 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
     // Removed syncStatus and lastScanResult from dependencies to prevent unintended restarts/stops
   }, [isCameraActive]);
 
+  const getUserLocation = (): Promise<string> => {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+            return resolve('Not Supported');
+        }
+        navigator.geolocation.getCurrentPosition(
+            (pos) => resolve(`${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`),
+            (err) => {
+                console.warn("Location access denied or error:", err);
+                resolve('Permission Denied/Error');
+            },
+            { timeout: 5000, enableHighAccuracy: true } // 5s timeout
+        );
+    });
+  };
+
   const handleScanProcess = async (value: string) => {
     if (syncStatus !== 'idle' || lastScanResult.status !== 'idle') return;
 
@@ -130,7 +146,11 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
     setSyncStatus('syncing');
       
     try {
-      await onScan(normalizedInput);
+      // Capture metadata before sending
+      const location = await getUserLocation();
+      const device = navigator.userAgent;
+
+      await onScan(normalizedInput, { location, device });
       
       setSyncStatus('success');
       setLastScanResult({ 
@@ -223,12 +243,12 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
         <div className="flex items-center gap-2">
            {syncStatus === 'syncing' && (
              <span className="flex items-center gap-1.5 text-xs font-bold text-violet-500 animate-pulse bg-violet-50 px-3 py-1 rounded-full">
-                <Loader2 className="w-3 h-3 animate-spin" /> กำลังตรวจสอบ...
+                <Loader2 className="w-3 h-3 animate-spin" /> กำลังตรวจสอบพิกัด...
              </span>
            )}
            {syncStatus === 'success' && (
              <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full">
-                <CloudSync className="w-3 h-3" /> บันทึกสำเร็จ
+                <Cloud className="w-3 h-3" /> บันทึกสำเร็จ
              </span>
            )}
         </div>
@@ -250,7 +270,7 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
                <div className="flex flex-col items-center gap-4">
                   <div className="relative">
                     <Loader2 className="w-20 h-20 text-violet-400 animate-spin" />
-                    <CloudSync className="w-8 h-8 text-white absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                    <Cloud className="w-8 h-8 text-white absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
                   </div>
                   <p className="text-violet-200 font-bold text-lg animate-pulse tracking-wide">กำลังประมวลผล...</p>
                </div>

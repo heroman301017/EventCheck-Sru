@@ -25,6 +25,8 @@ export interface User {
   status: 'pending' | 'checked-in' | 'checked-out';
   checkInTime?: string;
   checkOutTime?: string;
+  location?: string;
+  device?: string;
 }
 
 export interface Stats {
