@@ -29,7 +29,8 @@ export const INITIAL_EVENTS: Event[] = [
     name: 'ปฐมนิเทศนักศึกษาใหม่ 2567',
     date: '2024-06-01',
     location: 'หอประชุมใหญ่',
-    description: 'กิจกรรมต้อนรับนักศึกษาใหม่และแนะนำคณะ'
+    description: 'กิจกรรมต้อนรับนักศึกษาใหม่และแนะนำคณะ',
+    isActive: true
   }
 ];
 

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
-import { ScanLine, ArrowRight, LogOut, LogIn, XCircle, Loader2, CheckCircle2, Cloud, Camera, CameraOff, Clock, AlertTriangle, MapPin } from 'lucide-react';
+import { ScanLine, ArrowRight, LogOut, LogIn, XCircle, Loader2, CheckCircle2, Cloud, Camera, CameraOff, Clock, AlertTriangle, MapPin, Search, Zap } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { Html5Qrcode } from 'html5-qrcode';
 
@@ -30,7 +30,8 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
     if (pauseFocus || syncStatus !== 'idle' || lastScanResult.status !== 'idle' || isCameraActive) return;
 
     const focusInterval = setInterval(() => {
-      if (document.activeElement !== inputRef.current) {
+      // Only focus if viewport is wide enough (desktop) to prevent keyboard popping up on mobile
+      if (window.innerWidth > 768 && document.activeElement !== inputRef.current) {
         inputRef.current?.focus();
       }
     }, 1000);
@@ -49,18 +50,15 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
 
   // Camera Logic
   useEffect(() => {
-    // Flag to handle race conditions during async start/stop
     let ignore = false;
 
     const manageScanner = async () => {
       if (!isCameraActive) {
-         // Stop scanning
          if (scannerRef.current && (scannerRef.current.isScanning || scannerMountingRef.current)) {
             try {
                await scannerRef.current.stop();
                scannerRef.current.clear();
             } catch (err) {
-               // Ignore "not running" errors
                console.debug("Stop scanner error:", err);
             }
             scannerMountingRef.current = false;
@@ -68,7 +66,6 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
          return;
       }
 
-      // Start scanning
       if (isCameraActive && !scannerMountingRef.current) {
          try {
             scannerMountingRef.current = true;
@@ -105,13 +102,11 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
 
     return () => {
       ignore = true;
-      // Cleanup attempt
       if (scannerRef.current && scannerRef.current.isScanning) {
          scannerRef.current.stop().catch(err => console.debug("Cleanup stop error:", err));
          scannerMountingRef.current = false;
       }
     };
-    // Removed syncStatus and lastScanResult from dependencies to prevent unintended restarts/stops
   }, [isCameraActive]);
 
   const getUserLocation = (): Promise<string> => {
@@ -125,7 +120,7 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
                 console.warn("Location access denied or error:", err);
                 resolve('Permission Denied/Error');
             },
-            { timeout: 5000, enableHighAccuracy: true } // 5s timeout
+            { timeout: 5000, enableHighAccuracy: true } 
         );
     });
   };
@@ -133,8 +128,6 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
   const handleScanProcess = async (value: string) => {
     if (syncStatus !== 'idle' || lastScanResult.status !== 'idle') return;
 
-    // We keep isCameraActive = true theoretically, but we want to pause visuals
-    // Or we turn it off. Turning it off triggers the useEffect cleanup -> stop().
     setIsCameraActive(false); 
     setInput(value);
 
@@ -146,7 +139,6 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
     setSyncStatus('syncing');
       
     try {
-      // Capture metadata before sending
       const location = await getUserLocation();
       const device = navigator.userAgent;
 
@@ -199,7 +191,6 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
             message: 'สแกนออกเรียบร้อยแล้ว', 
             subMessage: 'กรุณาติดต่อผู้ดูแลระบบ' 
         });
-        // Allow manual reset for this error
       } else {
         setLastScanResult({ 
             status: 'error', 
@@ -229,7 +220,6 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
     setSyncStatus('idle');
     setInput('');
     setCooldown(0);
-    // Do not auto-restart camera to avoid loops
   };
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -237,144 +227,207 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
     if(input.trim()) handleScanProcess(input);
   };
 
+  // --- UI Components for Scanner ---
+
+  const ScanOverlay = () => (
+    <div className="absolute inset-0 pointer-events-none z-10">
+      {/* Corner Brackets */}
+      <div className="absolute top-6 left-6 w-12 h-12 border-t-4 border-l-4 border-cyan-400 rounded-tl-xl opacity-80"></div>
+      <div className="absolute top-6 right-6 w-12 h-12 border-t-4 border-r-4 border-violet-500 rounded-tr-xl opacity-80"></div>
+      <div className="absolute bottom-6 left-6 w-12 h-12 border-b-4 border-l-4 border-violet-500 rounded-bl-xl opacity-80"></div>
+      <div className="absolute bottom-6 right-6 w-12 h-12 border-b-4 border-r-4 border-cyan-400 rounded-br-xl opacity-80"></div>
+      
+      {/* Central Grid */}
+      <div className="absolute inset-0 flex items-center justify-center opacity-20">
+         <div className="w-64 h-64 border border-white/30 rounded-lg relative">
+            <div className="absolute top-1/2 left-0 right-0 h-[1px] bg-cyan-400/50"></div>
+            <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-cyan-400/50"></div>
+         </div>
+      </div>
+
+      {/* Scanning Animation */}
+      <div className="absolute top-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_20px_rgba(34,211,238,0.8)] animate-[scan_2s_infinite]"></div>
+    </div>
+  );
+
   return (
-    <div className="flex flex-col items-center justify-center w-full max-w-2xl mx-auto space-y-6 animate-fade-in">
-      <div className="w-full flex justify-between items-center px-2">
+    <div className="flex flex-col items-center justify-center w-full max-w-3xl mx-auto space-y-6 animate-fade-in px-4 md:px-0">
+      
+      {/* Status Bar */}
+      <div className="w-full flex flex-col md:flex-row justify-between items-center gap-4 bg-white/60 backdrop-blur-sm p-4 rounded-3xl border border-slate-100 shadow-sm">
         <div className="flex items-center gap-2">
-           {syncStatus === 'syncing' && (
-             <span className="flex items-center gap-1.5 text-xs font-bold text-violet-500 animate-pulse bg-violet-50 px-3 py-1 rounded-full">
-                <Loader2 className="w-3 h-3 animate-spin" /> กำลังตรวจสอบพิกัด...
+           {syncStatus === 'syncing' ? (
+             <span className="flex items-center gap-2 text-sm font-bold text-violet-600 bg-violet-100 px-4 py-1.5 rounded-full animate-pulse">
+                <Loader2 className="w-4 h-4 animate-spin" /> กำลังประมวลผล...
+             </span>
+           ) : (
+             <span className="flex items-center gap-2 text-sm font-bold text-slate-500 bg-slate-100 px-4 py-1.5 rounded-full">
+                <Zap className="w-4 h-4 text-amber-500" /> System Ready
              </span>
            )}
            {syncStatus === 'success' && (
-             <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full">
-                <Cloud className="w-3 h-3" /> บันทึกสำเร็จ
+             <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-100 px-3 py-1 rounded-full">
+                <Cloud className="w-3 h-3" /> Saved
              </span>
            )}
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-500 cursor-pointer bg-white px-3 py-1.5 rounded-full shadow-sm border border-slate-100">
-          <input type="checkbox" checked={autoSave} onChange={e => setAutoSave(e.target.checked)} className="rounded text-violet-500" />
-          <span className="font-medium">Auto Save</span>
+        
+        <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer hover:bg-white/80 p-2 rounded-xl transition-all">
+          <input type="checkbox" checked={autoSave} onChange={e => setAutoSave(e.target.checked)} className="rounded text-violet-500 w-4 h-4 focus:ring-violet-500" />
+          <span className="font-medium">Auto Save Slip</span>
         </label>
       </div>
 
-      <div className="relative w-full max-w-md bg-slate-800 rounded-[2.5rem] aspect-[4/3] flex flex-col items-center justify-center overflow-hidden shadow-xl border-8 border-white ring-4 ring-violet-50">
+      {/* Main Scanner Container - Digital Look */}
+      <div className="relative w-full aspect-[4/5] md:aspect-video bg-slate-900 rounded-[2.5rem] overflow-hidden shadow-2xl shadow-violet-200 border-4 border-slate-800 ring-4 ring-slate-100">
         
-        {/* Camera View Container */}
+        {/* Camera View */}
         <div id="reader" className={`w-full h-full object-cover ${!isCameraActive ? 'hidden' : ''}`} />
 
-        {/* Placeholder / Status View */}
+        {/* Overlay HUD (Always visible when camera active) */}
+        {isCameraActive && <ScanOverlay />}
+
+        {/* Idle / Placeholder State */}
         {!isCameraActive && lastScanResult.status === 'idle' && (
-          <>
-            {syncStatus === 'syncing' ? (
-               <div className="flex flex-col items-center gap-4">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+             {syncStatus === 'syncing' ? (
+               <div className="flex flex-col items-center gap-6 z-10">
                   <div className="relative">
-                    <Loader2 className="w-20 h-20 text-violet-400 animate-spin" />
-                    <Cloud className="w-8 h-8 text-white absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                    <div className="absolute inset-0 rounded-full blur-xl bg-violet-500/30 animate-pulse"></div>
+                    <Loader2 className="w-24 h-24 text-violet-400 animate-spin relative z-10" />
                   </div>
-                  <p className="text-violet-200 font-bold text-lg animate-pulse tracking-wide">กำลังประมวลผล...</p>
+                  <p className="text-violet-200 font-bold text-xl tracking-widest uppercase animate-pulse">Processing</p>
                </div>
-            ) : (
-               <div className="flex flex-col items-center">
-                <ScanLine className="w-20 h-20 text-violet-300 animate-pulse" />
-                <p className="mt-4 text-violet-200 font-medium">กดปุ่มด้านล่างเพื่อเปิดกล้อง</p>
-                <div className="absolute top-0 w-full h-1 bg-violet-400 shadow-[0_0_30px_rgba(167,139,250,0.8)] animate-[scan_2s_infinite]"></div>
+             ) : (
+               <div className="flex flex-col items-center z-10 p-8 text-center">
+                <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(139,92,246,0.3)] border border-slate-700">
+                    <ScanLine className="w-10 h-10 text-cyan-400" />
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-2">พร้อมสแกน</h3>
+                <p className="text-slate-400 text-sm max-w-xs leading-relaxed">กดปุ่มเปิดกล้องด้านล่าง หรือพิมพ์รหัสเพื่อทำการเช็คอิน</p>
+                
+                {/* Decorative Lines */}
+                <div className="mt-8 flex gap-2">
+                    <div className="w-2 h-2 rounded-full bg-violet-500 animate-bounce delay-100"></div>
+                    <div className="w-2 h-2 rounded-full bg-fuchsia-500 animate-bounce delay-200"></div>
+                    <div className="w-2 h-2 rounded-full bg-cyan-500 animate-bounce delay-300"></div>
+                </div>
                </div>
-            )}
-          </>
+             )}
+             
+             {/* Background Tech Patterns */}
+             <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>
+          </div>
         )}
 
-        {/* Success Overlay */}
+        {/* Success Overlay - Digital Card Style */}
         {lastScanResult.status === 'success' && (
-          <div className={`absolute inset-0 flex flex-col items-center justify-center text-white p-6 text-center animate-in zoom-in duration-300 ${lastScanResult.type === 'in' ? 'bg-emerald-500' : 'bg-slate-500'} z-20`}>
-            <div className="mb-4 bg-white/20 p-4 rounded-full backdrop-blur-sm animate-bounce">
-              <CheckCircle2 className="w-16 h-16 text-white" />
-            </div>
-            <h2 className="text-2xl font-bold">{lastScanResult.user?.name || 'บันทึกสำเร็จ'}</h2>
-            <p className="opacity-90 mt-1 font-mono bg-black/10 px-3 py-1 rounded-lg">{lastScanResult.user?.studentId || input}</p>
-            
-            <div className="mt-6 flex flex-col gap-3 w-full max-w-xs">
-               <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-md">
-                 <p className="font-bold text-xl">{lastScanResult.message}</p>
-                 <p className="text-xs opacity-90 uppercase tracking-widest">{lastScanResult.subMessage}</p>
-               </div>
-               <div className="mt-4">
-                  <button onClick={handleReset} className="w-full bg-white text-slate-700 font-bold py-3 px-6 rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-95">
-                    สแกนคนถัดไป <ArrowRight className="w-5 h-5" />
-                  </button>
-               </div>
+          <div className={`absolute inset-0 z-20 flex flex-col items-center justify-center p-6 text-center animate-in zoom-in duration-300 bg-slate-900/90 backdrop-blur-md`}>
+            <div className="w-full max-w-sm bg-white/10 border border-white/20 rounded-3xl p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+                <div className={`absolute top-0 left-0 w-full h-2 ${lastScanResult.type === 'in' ? 'bg-gradient-to-r from-emerald-400 to-teal-500' : 'bg-gradient-to-r from-slate-400 to-slate-600'}`}></div>
+                
+                <div className="mb-6 inline-flex p-4 rounded-full bg-white/10 shadow-inner">
+                    <CheckCircle2 className={`w-16 h-16 ${lastScanResult.type === 'in' ? 'text-emerald-400' : 'text-slate-300'}`} />
+                </div>
+                
+                <h2 className="text-3xl font-bold text-white mb-1 tracking-tight">{lastScanResult.user?.name}</h2>
+                <p className="text-cyan-300 font-mono text-lg mb-6">{lastScanResult.user?.studentId || input}</p>
+                
+                <div className="bg-black/30 rounded-2xl p-4 border border-white/5">
+                    <p className={`text-xl font-bold ${lastScanResult.type === 'in' ? 'text-emerald-400' : 'text-slate-300'}`}>{lastScanResult.message}</p>
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mt-1">{lastScanResult.subMessage}</p>
+                </div>
+
+                <div className="mt-6">
+                    <button onClick={handleReset} className="w-full bg-white text-slate-900 font-bold py-3.5 rounded-xl shadow-lg hover:bg-slate-100 active:scale-95 transition-all flex items-center justify-center gap-2">
+                        สแกนคนถัดไป <ArrowRight className="w-5 h-5" />
+                    </button>
+                </div>
             </div>
           </div>
         )}
 
         {/* Error Overlay */}
         {lastScanResult.status === 'error' && (
-          <div className="absolute inset-0 bg-rose-500 flex flex-col items-center justify-center text-white p-6 animate-in zoom-in z-20">
-            {cooldown > 0 ? (
-               <div className="text-center">
-                  <div className="mb-4 inline-block p-4 bg-white/20 rounded-full animate-pulse">
-                     <Clock className="w-16 h-16 text-white" />
-                  </div>
-                  <h2 className="text-3xl font-black mb-2">{Math.floor(cooldown / 60)}:{String(cooldown % 60).padStart(2, '0')}</h2>
-                  <p className="opacity-90 text-lg">{lastScanResult.message}</p>
-                  <p className="text-sm opacity-75 mt-2 max-w-xs mx-auto">อุปกรณ์นี้เพิ่งสแกนรหัสนี้ไป กรุณารอก่อนสแกนซ้ำ</p>
-                  <button onClick={handleReset} className="mt-6 text-sm font-bold underline opacity-60 hover:opacity-100">ข้ามการรอ (Force Scan)</button>
-               </div>
-            ) : (
-               <>
-                  <XCircle className="w-20 h-20 mb-4 opacity-90" />
-                  <h2 className="text-2xl font-bold">{lastScanResult.message}</h2>
-                  <p className="opacity-90">{lastScanResult.subMessage}</p>
-                  {/* Hide Retry button if auto-redirecting */}
-                  {lastScanResult.message !== 'ไม่พบข้อมูล' && (
-                      <button onClick={handleReset} className="mt-8 bg-white/20 hover:white/30 px-8 py-3 rounded-2xl font-bold backdrop-blur-md">ลองใหม่</button>
-                  )}
-               </>
-            )}
+          <div className="absolute inset-0 z-20 bg-slate-900/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-white animate-in zoom-in">
+             <div className="w-full max-w-xs text-center">
+                {cooldown > 0 ? (
+                    <div className="bg-rose-500/10 border border-rose-500/30 rounded-3xl p-8">
+                         <Clock className="w-16 h-16 text-rose-500 mx-auto mb-4 animate-pulse" />
+                         <h2 className="text-4xl font-black mb-2 text-white">{Math.floor(cooldown / 60)}:{String(cooldown % 60).padStart(2, '0')}</h2>
+                         <p className="text-rose-300 font-bold text-lg">{lastScanResult.message}</p>
+                         <p className="text-sm text-slate-400 mt-4">กรุณารอสักครู่ก่อนสแกนซ้ำ</p>
+                         <button onClick={handleReset} className="mt-6 text-xs text-slate-500 hover:text-white underline">Force Scan</button>
+                    </div>
+                ) : (
+                    <>
+                        <div className="mb-6 inline-flex p-4 rounded-full bg-rose-500/20 text-rose-500">
+                             <XCircle className="w-20 h-20" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-white mb-2">{lastScanResult.message}</h2>
+                        <p className="text-slate-400 mb-8">{lastScanResult.subMessage}</p>
+                        
+                        {lastScanResult.message !== 'ไม่พบข้อมูล' && (
+                            <button onClick={handleReset} className="w-full bg-white/10 border border-white/20 hover:bg-white/20 text-white py-3.5 rounded-2xl font-bold backdrop-blur-md transition-all">
+                                ลองใหม่อีกครั้ง
+                            </button>
+                        )}
+                    </>
+                )}
+             </div>
           </div>
         )}
       </div>
 
-      {/* Warning Message */}
-      <div className="w-full max-w-md bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-start gap-3">
-        <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-        <div className="text-xs text-amber-800 space-y-1">
-          <p className="font-bold">คำเตือน: การลงทะเบียนแทนกันถือเป็นความผิด</p>
-          <p className="opacity-90 leading-relaxed">ระบบจะบันทึกข้อมูลตำแหน่ง (<MapPin className="w-3 h-3 inline" /> Location) และประวัติการลงทะเบียนของท่านไว้เพื่อการตรวจสอบสิทธิ์</p>
-        </div>
-      </div>
-
-      <div className="w-full max-w-md space-y-3">
-         {/* Camera Toggle Button */}
+      {/* Control Section */}
+      <div className="w-full max-w-md space-y-4">
+         
+         {/* Camera Toggle - Modern Button */}
          {lastScanResult.status === 'idle' && syncStatus === 'idle' && (
            <button 
              onClick={() => setIsCameraActive(!isCameraActive)}
-             className={`w-full py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 ${isCameraActive ? 'bg-rose-100 text-rose-500 hover:bg-rose-200' : 'bg-slate-800 text-white hover:bg-slate-700'}`}
+             className={`w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg active:scale-[0.98] text-lg ${
+                isCameraActive 
+                ? 'bg-rose-100 text-rose-600 border border-rose-200' 
+                : 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-violet-200'
+             }`}
            >
              {isCameraActive ? <><CameraOff className="w-5 h-5" /> ปิดกล้อง</> : <><Camera className="w-5 h-5" /> เปิดกล้องสแกน</>}
            </button>
          )}
 
-         {/* Manual Input Form */}
-         <form onSubmit={handleSubmit} className="relative">
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            disabled={syncStatus === 'syncing' || lastScanResult.status !== 'idle' || isCameraActive}
-            onChange={(e) => setInput(e.target.value)}
-            className="block w-full px-6 py-4 bg-white border-2 border-slate-100 rounded-2xl text-lg focus:ring-4 focus:ring-violet-100 outline-none shadow-sm disabled:bg-slate-50 disabled:text-slate-400"
-            placeholder={isCameraActive ? "กำลังใช้กล้อง..." : "พิมพ์รหัสนักศึกษา/เบอร์โทร..."}
-            autoComplete="off"
-          />
-          <button 
-            type="submit" 
-            disabled={syncStatus === 'syncing' || lastScanResult.status !== 'idle' || isCameraActive}
-            className="absolute inset-y-2 right-2 px-6 bg-violet-500 text-white rounded-xl font-bold shadow-md active:scale-95 disabled:bg-slate-200 disabled:text-slate-400"
-          >
-            {syncStatus === 'syncing' ? '...' : 'ตรวจสอบ'}
-          </button>
-        </form>
+         {/* Manual Input - Modern Floating Look */}
+         <form onSubmit={handleSubmit} className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-r from-violet-400 to-cyan-400 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity"></div>
+            <div className="relative flex items-center bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden p-1">
+                <div className="pl-4 text-slate-400">
+                    <Search className="w-5 h-5" />
+                </div>
+                <input
+                    ref={inputRef}
+                    type="text"
+                    value={input}
+                    disabled={syncStatus === 'syncing' || lastScanResult.status !== 'idle' || isCameraActive}
+                    onChange={(e) => setInput(e.target.value)}
+                    className="flex-1 px-4 py-3 bg-transparent text-slate-800 font-bold placeholder:text-slate-300 placeholder:font-normal outline-none disabled:bg-transparent"
+                    placeholder="รหัสนักศึกษา / เบอร์โทร"
+                    autoComplete="off"
+                />
+                <button 
+                    type="submit" 
+                    disabled={syncStatus === 'syncing' || lastScanResult.status !== 'idle' || isCameraActive || !input.trim()}
+                    className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-sm shadow-md hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                    {syncStatus === 'syncing' ? '...' : 'GO'}
+                </button>
+            </div>
+         </form>
+
+         {/* Location Warning */}
+         <div className="flex items-start gap-2 justify-center text-[10px] text-slate-400 text-center px-4">
+            <MapPin className="w-3 h-3 mt-0.5" />
+            <p>ระบบจะบันทึกตำแหน่ง (GPS) เพื่อตรวจสอบสิทธิ์การเข้าร่วมงาน</p>
+         </div>
       </div>
 
       {/* Hidden Proof Container */}

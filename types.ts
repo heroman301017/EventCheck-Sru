@@ -5,6 +5,7 @@ export interface Event {
   date: string;
   location: string;
   description: string;
+  isActive?: boolean; // New field for visibility control
 }
 
 export interface SystemSettings {
