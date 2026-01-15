@@ -25,7 +25,7 @@ export interface User {
   status: 'pending' | 'checked-in' | 'checked-out';
   checkInTime?: string;
   checkOutTime?: string;
-  location?: string;
+  location?: string; // Format: "lat,lng"
   device?: string;
 }
 

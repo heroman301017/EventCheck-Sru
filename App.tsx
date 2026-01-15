@@ -6,10 +6,12 @@ import { Dashboard } from './components/Dashboard';
 import { UserList } from './components/UserList';
 import { Scanner } from './components/Scanner';
 import { MapDashboard } from './components/MapDashboard';
+import { ReportDashboard } from './components/ReportDashboard';
 import { 
   QrCode, Lock, Unlock, RefreshCw, 
   Calendar, MapPin, Settings, Loader2, ChevronRight,
-  UserPlus, Scan, Home as HomeIcon, Users, LayoutDashboard, Save, Type, Map as MapIcon
+  UserPlus, Scan, Home as HomeIcon, Users, LayoutDashboard, Save, Type, Map as MapIcon,
+  FileText
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -20,12 +22,12 @@ import { EventShowcase } from './components/EventShowcase';
 import { ConfirmationModal } from './components/ConfirmationModal';
 
 // *** ตรวจสอบ URL ของคุณให้ถูกต้อง ***
-const API_URL = "https://script.google.com/macros/s/AKfycbziSo348l5sNxHU3kz0FB7fzQmIMUjgX5Bj7k5KYvs-8vjPTisRr7zLrHer4c2AZ9s/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbySVo23szeqz9l9tOV4ZAy1uiTv9M_HDNh8crsrjV07paiMcwU7BXlULcJQ3PH5JA/exec";
 const TARGET_SPREADSHEET_ID = "1nZlbcEAsehvi_fIehXASjgiLiplqB9nOxAWTD2KbmG8";
 
 const App: React.FC = () => {
-  // Removed 'overview' from activeTab type
-  const [activeTab, setActiveTab] = useState<'home' | 'scan' | 'register' | 'events'>('home');
+  // Added 'report' to activeTab type
+  const [activeTab, setActiveTab] = useState<'home' | 'scan' | 'register' | 'events' | 'report'>('home');
   // New state for Manage sub-tabs
   const [manageSubTab, setManageSubTab] = useState<'events' | 'users' | 'map'>('users');
   
@@ -66,20 +68,29 @@ const App: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      const response = await fetch(`${API_URL}?t=${Date.now()}`);
+      // Add 'action' and timestamp to prevent caching and ensure correct routing in GAS
+      const response = await fetch(`${API_URL}?action=getUsers&t=${Date.now()}`, {
+        cache: 'no-store'
+      });
       if (!response.ok) throw new Error("Fetch failed");
       const data = await response.json();
       
-      // Always update users with normalized data from API
-      // Normalize User Data Keys (Location -> location)
-      const normalizedUsers = (data.users || []).map((u: any) => ({
-        ...u,
-        location: u.location || u.Location || u.LOCATION || undefined,
-        studentId: u.studentId || u.StudentId || '',
-        name: u.name || u.Name || '',
-        phone: u.phone || u.Phone || '',
-        status: (u.status || u.Status || 'pending').toLowerCase()
-      }));
+      const normalizedUsers = (data.users || []).map((u: any) => {
+        // Robust location extraction: Check keys specifically as they appear in the Sheet (Capital L is common)
+        const rawLocation = u['Location'] || u['location'] || u['Users.Location'] || u['gps'] || u['GPS'];
+        
+        return {
+          ...u,
+          id: u.id || Date.now() + Math.random(),
+          // Force string conversion for robust filtering
+          studentId: u.studentId ? String(u.studentId) : '',
+          name: u.name ? String(u.name) : '-',
+          phone: u.phone ? String(u.phone) : '',
+          // Ensure location is string or undefined
+          location: rawLocation ? String(rawLocation) : undefined,
+          device: u.device || undefined
+        };
+      });
       setUsers(normalizedUsers);
       
       if (events.length === 0 || data.events?.length > 0) setEvents(data.events || []);
@@ -177,17 +188,6 @@ const App: React.FC = () => {
       newStatus = 'checked-out';
     }
     
-    // Determine the location to save:
-    // 1. If new meta location is valid (contains comma), use it.
-    // 2. Else if user already has valid location, keep it.
-    // 3. Else fallback to meta location (error msg) or dash.
-    const hasValidNewLocation = meta?.location && meta.location.includes(',');
-    const hasValidOldLocation = user.location && user.location.includes(',');
-    
-    const finalLocation = hasValidNewLocation 
-        ? meta!.location 
-        : (hasValidOldLocation ? user.location : (meta?.location || '-'));
-
     setUsers(prev => prev.map(u => {
       if (u.id === user.id) {
          let checkInTime = u.checkInTime;
@@ -205,7 +205,7 @@ const App: React.FC = () => {
            status: newStatus,
            checkInTime,
            checkOutTime,
-           location: finalLocation,
+           location: meta?.location || u.location,
            device: meta?.device || u.device
          };
       }
@@ -220,7 +220,7 @@ const App: React.FC = () => {
       status: newStatus,
       time: now,
       // Add metadata
-      location: finalLocation,
+      location: meta?.location || '-',
       device: meta?.device || '-'
     });
   };
@@ -389,7 +389,8 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-slate-50 font-sans overflow-hidden">
-      <header className="bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-40 border-b border-violet-100 shrink-0">
+      {/* Hide Header on Print */}
+      <header className="bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-40 border-b border-violet-100 shrink-0 print:hidden">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('home')}>
             <div className="bg-gradient-to-tr from-violet-500 to-fuchsia-500 p-2 rounded-xl shadow-md"><QrCode className="w-6 h-6 text-white" /></div>
@@ -407,7 +408,10 @@ const App: React.FC = () => {
               {(systemSettings.isScanningOpen || isAdmin) && (
                 <button onClick={() => setActiveTab('scan')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'scan' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}>สแกน</button>
               )}
-              {/* Removed Standalone Dashboard Button */}
+               {/* New Report Tab */}
+              {(systemSettings.allowPublicDashboard || isAdmin) && (
+                <button onClick={() => setActiveTab('report')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'report' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}>รายงาน</button>
+              )}
               {isAdmin && <button onClick={() => setActiveTab('events')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'events' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}>จัดการ</button>}
             </nav>
             <button onClick={() => isAdmin ? setIsAdmin(false) : setShowLogin(true)} className={`p-2 rounded-full transition-all ${isAdmin ? 'bg-amber-100 text-amber-500' : 'bg-slate-100 text-slate-400'}`}>
@@ -417,9 +421,9 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Show Event Selector only if NOT on Home */}
+      {/* Show Event Selector only if NOT on Home and NOT on Print */}
       {activeTab !== 'home' && activeTab !== 'register' && events.length > 0 && (
-        <div className="bg-violet-600 text-white py-2 shadow-inner">
+        <div className="bg-violet-600 text-white py-2 shadow-inner print:hidden">
            <div className="max-w-7xl mx-auto px-4 flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
               <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">Event:</span>
               {events.map(e => (
@@ -429,7 +433,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6 overflow-y-auto pb-20">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6 overflow-y-auto pb-20 print:overflow-visible print:p-0 print:h-auto print:w-full print:max-w-none">
         {activeTab === 'home' && (
           <div className="h-full flex flex-col items-center justify-center space-y-12 py-10 animate-in fade-in zoom-in duration-500">
              <div className="text-center space-y-4 max-w-md">
@@ -507,6 +511,16 @@ const App: React.FC = () => {
                />
             )}
             {registeredUser && <EventPass user={registeredUser} event={eventForRegistration || currentEvent} onBack={() => { setRegisteredUser(null); setEventForRegistration(null); setPrefillRegistration(null); }} />}
+          </div>
+        )}
+
+        {/* New Report Page */}
+        {activeTab === 'report' && (
+          <div className="w-full max-w-5xl mx-auto">
+             <div className="mb-6 print:hidden">
+                <button onClick={() => setActiveTab('home')} className="flex items-center gap-2 text-slate-400 hover:text-violet-500 font-bold transition-all"><ChevronRight className="w-5 h-5 rotate-180" /> กลับหน้าหลัก</button>
+             </div>
+             <ReportDashboard users={currentEventUsers} event={currentEvent} stats={stats} />
           </div>
         )}
 
@@ -615,15 +629,15 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Global Footer with Editable Owner Credit */}
-      <footer className="bg-white py-4 border-t border-slate-100 mt-auto">
+      {/* Global Footer with Editable Owner Credit - Hidden on Print */}
+      <footer className="bg-white py-4 border-t border-slate-100 mt-auto print:hidden">
         <div className="max-w-7xl mx-auto px-4 text-center">
            <p className="text-xs text-slate-400 font-medium">{systemSettings.ownerCredit || 'Developed by EventCheck System'}</p>
         </div>
       </footer>
 
       {showLogin && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 print:hidden">
           <div className="bg-white rounded-[2.5rem] p-8 max-w-xs w-full shadow-2xl">
              <div className="text-center mb-6"><Lock className="w-12 h-12 text-violet-500 mx-auto mb-2" /><h3 className="text-xl font-bold text-slate-800">Admin Login</h3></div>
              {/* Updated Password to 9999 */}

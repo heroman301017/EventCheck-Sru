@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { User } from '../types';
 import { Search, Download, Check, Clock, QrCode, Edit2, LogOut, FileText, FileSpreadsheet, X, Save, Upload, Trash2 } from 'lucide-react';
@@ -23,7 +24,11 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onUpdateU
 
   const filteredUsers = users.filter(user => {
     const term = searchTerm.toLowerCase();
-    const matchesSearch = user.name.toLowerCase().includes(term) || user.phone.includes(term) || user.studentId.includes(term);
+    const name = user.name ? String(user.name).toLowerCase() : '';
+    const phone = user.phone ? String(user.phone) : '';
+    const studentId = user.studentId ? String(user.studentId) : '';
+    
+    const matchesSearch = name.includes(term) || phone.includes(term) || studentId.includes(term);
     const matchesFilter = filter === 'all' ? true : user.status === filter;
     return matchesSearch && matchesFilter;
   });
@@ -127,7 +132,7 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onUpdateU
                 <tr key={user.id} className={`border-b border-slate-50 transition-colors ${user.status === 'checked-in' ? 'bg-emerald-50/30' : user.status === 'checked-out' ? 'bg-slate-50/50' : ''}`}>
                   <td className="p-4 font-mono font-bold text-slate-400">{user.studentId || '-'}</td>
                   <td className="p-4 font-bold text-slate-700">{user.name || '-'}</td>
-                  <td className="p-4 font-mono">{isEditable ? (user.phone || '-') : user.phone.length > 4 ? user.phone.slice(0, -4) + 'XXXX' : user.phone}</td>
+                  <td className="p-4 font-mono">{isEditable ? (user.phone || '-') : (user.phone && user.phone.length > 4 ? user.phone.slice(0, -4) + 'XXXX' : user.phone || '-')}</td>
                   <td className="p-4">
                     <div className="text-xs font-bold text-slate-500">{user.faculty || '-'}</div>
                     <div className="text-[10px] text-slate-400">{user.major || '-'}</div>
@@ -177,7 +182,7 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onUpdateU
             <h3 className="text-xl font-bold text-slate-800 mb-1">{selectedQr.name}</h3>
             <p className="text-slate-400 font-mono mb-6">{selectedQr.studentId}</p>
             <div className="flex justify-center mb-8 p-6 bg-white border-2 border-dashed border-slate-100 rounded-3xl">
-               <QRCodeSVG value={selectedQr.studentId || selectedQr.phone} size={180} level="H" />
+               <QRCodeSVG value={selectedQr.studentId || selectedQr.phone || ''} size={180} level="H" />
             </div>
             <button onClick={() => setSelectedQr(null)} className="w-full py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold">ปิด</button>
           </div>
@@ -192,12 +197,12 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onUpdateU
               <button onClick={() => setEditingUser(null)}><X className="w-6 h-6 text-slate-300" /></button>
             </div>
             <div className="space-y-4">
-               <div><label className="text-[10px] font-bold text-slate-400 uppercase">ชื่อ-สกุล</label><input type="text" value={editingUser.name} onChange={e=>setEditingUser({...editingUser, name:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl outline-none" /></div>
+               <div><label className="text-[10px] font-bold text-slate-400 uppercase">ชื่อ-สกุล</label><input type="text" value={editingUser.name || ''} onChange={e=>setEditingUser({...editingUser, name:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl outline-none" /></div>
                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="text-[10px] font-bold text-slate-400 uppercase">รหัส นศ.</label><input type="text" value={editingUser.studentId} onChange={e=>setEditingUser({...editingUser, studentId:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl outline-none" /></div>
-                  <div><label className="text-[10px] font-bold text-slate-400 uppercase">เบอร์โทร</label><input type="text" value={editingUser.phone} onChange={e=>setEditingUser({...editingUser, phone:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl outline-none" /></div>
+                  <div><label className="text-[10px] font-bold text-slate-400 uppercase">รหัส นศ.</label><input type="text" value={editingUser.studentId || ''} onChange={e=>setEditingUser({...editingUser, studentId:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl outline-none" /></div>
+                  <div><label className="text-[10px] font-bold text-slate-400 uppercase">เบอร์โทร</label><input type="text" value={editingUser.phone || ''} onChange={e=>setEditingUser({...editingUser, phone:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl outline-none" /></div>
                </div>
-               <div><label className="text-[10px] font-bold text-slate-400 uppercase">คณะ</label><input type="text" value={editingUser.faculty} onChange={e=>setEditingUser({...editingUser, faculty:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl outline-none" /></div>
+               <div><label className="text-[10px] font-bold text-slate-400 uppercase">คณะ</label><input type="text" value={editingUser.faculty || ''} onChange={e=>setEditingUser({...editingUser, faculty:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl outline-none" /></div>
                <div><label className="text-[10px] font-bold text-slate-400 uppercase">สถานะ</label><select value={editingUser.status} onChange={e=>setEditingUser({...editingUser, status: e.target.value as any})} className="w-full p-3 bg-slate-50 rounded-xl outline-none"><option value="pending">รอ</option><option value="checked-in">มาแล้ว</option><option value="checked-out">กลับแล้ว</option></select></div>
                <button onClick={() => { onUpdateUser(editingUser); setEditingUser(null); }} className="w-full py-4 bg-violet-500 text-white rounded-2xl font-bold flex items-center justify-center gap-2"><Save className="w-5 h-5" /> บันทึก</button>
             </div>

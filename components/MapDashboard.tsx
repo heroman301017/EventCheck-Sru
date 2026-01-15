@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { User } from '../types';
 import L from 'leaflet';
-import { Map as MapIcon, Satellite, UserCheck, LogOut, Navigation, AlertCircle } from 'lucide-react';
+import { Map as MapIcon, Satellite, Navigation, AlertCircle } from 'lucide-react';
 
 // Fix Leaflet Default Icon issue in React
 const createCustomIcon = (color: string) => {
@@ -37,29 +37,15 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({ users }) => {
 
   // Filter users with valid location data
   const usersWithLocation = useMemo(() => {
-    console.log("Processing users for map:", users.length);
-    return users.filter(u => {
-      // Robust check for string content
-      const loc = u.location;
-      if (!loc || typeof loc !== 'string') return false;
-      // Must contain comma and have reasonable length (e.g. "1,1")
-      return loc.includes(',') && loc.trim().length > 3; 
-    }).map(u => {
+    return users.filter(u => u.location && (u.location.includes(',') || u.location.includes(' '))).map(u => {
       try {
-        const parts = u.location!.split(',').map(p => p.trim());
-        if (parts.length < 2) return { ...u, lat: NaN, lng: NaN };
-
+        // Robust parsing for "lat,lng" or "lat lng"
+        const separator = u.location!.includes(',') ? ',' : ' ';
+        const parts = u.location!.split(separator).filter(p => p.trim() !== '');
         const lat = parseFloat(parts[0]);
         const lng = parseFloat(parts[1]);
-        
-        // Basic validation for lat/lng range
-        if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-            return { ...u, lat: NaN, lng: NaN };
-        }
-
         return { ...u, lat, lng };
       } catch (e) {
-        console.error("Error parsing location for user", u.id, e);
         return { ...u, lat: NaN, lng: NaN };
       }
     }).filter(u => !isNaN(u.lat) && !isNaN(u.lng));
@@ -93,55 +79,14 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({ users }) => {
   const defaultCenter: [number, number] = [13.7563, 100.5018];
 
   return (
-    <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden h-[600px] flex flex-col animate-fade-in relative">
-      {/* Header / Controls */}
-      <div className="absolute top-4 right-4 z-[400] flex gap-2">
-        <div className="bg-white/90 backdrop-blur-md p-1 rounded-xl shadow-lg border border-slate-200 flex">
-            <button 
-                onClick={() => setMapType('street')}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${mapType === 'street' ? 'bg-violet-500 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
-            >
-                <MapIcon className="w-4 h-4" /> แผนที่
-            </button>
-            <button 
-                onClick={() => setMapType('satellite')}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${mapType === 'satellite' ? 'bg-violet-500 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
-            >
-                <Satellite className="w-4 h-4" /> ดาวเทียม
-            </button>
-        </div>
-      </div>
-
-      <div className="absolute top-4 left-4 z-[400] bg-white/90 backdrop-blur-md px-4 py-3 rounded-2xl shadow-lg border border-slate-200 pointer-events-none">
-         <h3 className="font-bold text-slate-800 flex items-center gap-2">
-            <Navigation className="w-4 h-4 text-violet-500" /> พิกัดการลงทะเบียน
-         </h3>
-         <div className="flex flex-col gap-1 mt-1">
-             <p className="text-xs text-slate-500">
-                ผู้เข้าร่วมทั้งหมด: <span className="font-bold">{users.length}</span>
-             </p>
-             <p className="text-xs text-slate-500">
-                มีพิกัด GPS: <span className={`font-bold ${usersWithLocation.length > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>{usersWithLocation.length}</span>
-             </p>
-         </div>
-      </div>
-
-      {usersWithLocation.length === 0 && (
-        <div className="absolute inset-0 z-[300] flex items-center justify-center pointer-events-none">
-            <div className="bg-white/90 backdrop-blur-md px-6 py-4 rounded-3xl shadow-xl border border-slate-200 flex flex-col items-center">
-                <AlertCircle className="w-8 h-8 text-slate-400 mb-2" />
-                <p className="text-slate-500 font-bold text-sm">ไม่พบข้อมูลพิกัด GPS</p>
-                <p className="text-xs text-slate-400 mt-1">ข้อมูลจะปรากฏเมื่อมีการสแกนพร้อมเปิดระบุตำแหน่ง</p>
-            </div>
-        </div>
-      )}
-
-      {/* Map Container */}
+    <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden h-[600px] flex flex-col animate-fade-in relative z-0">
+      
+      {/* Map Container - Rendered first to be at the bottom */}
       <MapContainer 
         center={defaultCenter} 
         zoom={10} 
         scrollWheelZoom={true} 
-        style={{ height: '100%', width: '100%' }}
+        style={{ height: '100%', width: '100%', zIndex: 0 }}
       >
         {mapType === 'street' ? (
              <TileLayer
@@ -184,6 +129,53 @@ export const MapDashboard: React.FC<MapDashboardProps> = ({ users }) => {
 
         {bounds && <SetBoundsRect bounds={bounds} />}
       </MapContainer>
+
+      {/* Overlays - Rendered last with high Z-Index to stay on top */}
+      
+      {/* Map Type Toggle */}
+      <div className="absolute top-4 right-4 z-[1000] flex gap-2">
+        <div className="bg-white/90 backdrop-blur-md p-1 rounded-xl shadow-lg border border-slate-200 flex">
+            <button 
+                onClick={() => setMapType('street')}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${mapType === 'street' ? 'bg-violet-500 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+            >
+                <MapIcon className="w-4 h-4" /> แผนที่
+            </button>
+            <button 
+                onClick={() => setMapType('satellite')}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${mapType === 'satellite' ? 'bg-violet-500 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+            >
+                <Satellite className="w-4 h-4" /> ดาวเทียม
+            </button>
+        </div>
+      </div>
+
+      {/* Info Box */}
+      <div className="absolute top-4 left-4 z-[1000] bg-white/90 backdrop-blur-md px-4 py-3 rounded-2xl shadow-lg border border-slate-200 pointer-events-none">
+         <h3 className="font-bold text-slate-800 flex items-center gap-2">
+            <Navigation className="w-4 h-4 text-violet-500" /> พิกัดการลงทะเบียน
+         </h3>
+         <div className="flex flex-col gap-1 mt-1">
+             <p className="text-xs text-slate-500">
+                ผู้เข้าร่วมทั้งหมด: <span className="font-bold">{users.length}</span>
+             </p>
+             <p className="text-xs text-slate-500">
+                มีพิกัด GPS: <span className={`font-bold ${usersWithLocation.length > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>{usersWithLocation.length}</span>
+             </p>
+         </div>
+      </div>
+
+      {/* No Data Alert */}
+      {usersWithLocation.length === 0 && (
+        <div className="absolute inset-0 z-[1000] flex items-center justify-center pointer-events-none">
+            <div className="bg-white/90 backdrop-blur-md px-6 py-4 rounded-3xl shadow-xl border border-slate-200 flex flex-col items-center">
+                <AlertCircle className="w-8 h-8 text-slate-400 mb-2" />
+                <p className="text-slate-500 font-bold text-sm">ไม่พบข้อมูลพิกัด GPS</p>
+                <p className="text-xs text-slate-400 mt-1">ข้อมูลจะปรากฏเมื่อมีการสแกนพร้อมเปิดระบุตำแหน่ง</p>
+            </div>
+        </div>
+      )}
+
     </div>
   );
 };

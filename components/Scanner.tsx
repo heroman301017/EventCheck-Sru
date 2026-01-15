@@ -327,7 +327,7 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
                   <p className="opacity-90">{lastScanResult.subMessage}</p>
                   {/* Hide Retry button if auto-redirecting */}
                   {lastScanResult.message !== 'ไม่พบข้อมูล' && (
-                      <button onClick={handleReset} className="mt-8 bg-white/20 hover:bg-white/30 px-8 py-3 rounded-2xl font-bold backdrop-blur-md">ลองใหม่</button>
+                      <button onClick={handleReset} className="mt-8 bg-white/20 hover:white/30 px-8 py-3 rounded-2xl font-bold backdrop-blur-md">ลองใหม่</button>
                   )}
                </>
             )}
