@@ -13,6 +13,8 @@ export interface SystemSettings {
   isScanningOpen: boolean;
   allowPublicDashboard: boolean;
   ownerCredit?: string;
+  themeColor?: string; // Hex color code for system theme
+  scannerBackground?: string; // Base64 string or URL for scanner background image
 }
 
 export interface User {

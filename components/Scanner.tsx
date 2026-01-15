@@ -10,9 +10,10 @@ interface ScannerProps {
   onScan: (id: string, meta?: { location: string; device: string }) => Promise<void>;
   onRegisterRedirect?: (id: string) => void;
   pauseFocus?: boolean;
+  backgroundImage?: string; // New prop for custom background
 }
 
-export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedirect, pauseFocus = false }) => {
+export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedirect, pauseFocus = false, backgroundImage }) => {
   const [input, setInput] = useState('');
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
   const [lastScanResult, setLastScanResult] = useState<{ status: 'success' | 'error' | 'idle'; message: string; subMessage?: string; user?: User; type?: 'in' | 'out' }>({ status: 'idle', message: '' });
@@ -279,17 +280,23 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
       </div>
 
       {/* Main Scanner Container - Digital Look */}
-      <div className="relative w-full aspect-[4/5] md:aspect-video bg-slate-900 rounded-[2.5rem] overflow-hidden shadow-2xl shadow-violet-200 border-4 border-slate-800 ring-4 ring-slate-100">
+      {/* UPDATE: Support Background Image */}
+      <div 
+        className="relative w-full aspect-[4/5] md:aspect-video bg-slate-900 rounded-[2.5rem] overflow-hidden shadow-2xl shadow-violet-200 border-4 border-slate-800 ring-4 ring-slate-100 bg-cover bg-center"
+        style={backgroundImage ? { backgroundImage: `url(${backgroundImage})` } : {}}
+      >
+        {/* Overlay to darken background image if present */}
+        {backgroundImage && <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"></div>}
         
         {/* Camera View */}
-        <div id="reader" className={`w-full h-full object-cover ${!isCameraActive ? 'hidden' : ''}`} />
+        <div id="reader" className={`w-full h-full object-cover relative z-10 ${!isCameraActive ? 'hidden' : ''}`} />
 
         {/* Overlay HUD (Always visible when camera active) */}
         {isCameraActive && <ScanOverlay />}
 
         {/* Idle / Placeholder State */}
         {!isCameraActive && lastScanResult.status === 'idle' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+          <div className={`absolute inset-0 flex flex-col items-center justify-center relative z-10 ${!backgroundImage ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900' : ''}`}>
              {syncStatus === 'syncing' ? (
                <div className="flex flex-col items-center gap-6 z-10">
                   <div className="relative">
@@ -300,11 +307,11 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
                </div>
              ) : (
                <div className="flex flex-col items-center z-10 p-8 text-center">
-                <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(139,92,246,0.3)] border border-slate-700">
+                <div className="w-24 h-24 bg-slate-800/80 backdrop-blur-sm rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(139,92,246,0.3)] border border-slate-700">
                     <ScanLine className="w-10 h-10 text-cyan-400" />
                 </div>
-                <h3 className="text-2xl font-bold text-white mb-2">พร้อมสแกน</h3>
-                <p className="text-slate-400 text-sm max-w-xs leading-relaxed">กดปุ่มเปิดกล้องด้านล่าง หรือพิมพ์รหัสเพื่อทำการเช็คอิน</p>
+                <h3 className="text-2xl font-bold text-white mb-2 text-shadow">พร้อมสแกน</h3>
+                <p className="text-slate-200 text-sm max-w-xs leading-relaxed text-shadow-sm">กดปุ่มเปิดกล้องด้านล่าง หรือพิมพ์รหัสเพื่อทำการเช็คอิน</p>
                 
                 {/* Decorative Lines */}
                 <div className="mt-8 flex gap-2">
@@ -315,8 +322,8 @@ export const Scanner: React.FC<ScannerProps> = ({ users, onScan, onRegisterRedir
                </div>
              )}
              
-             {/* Background Tech Patterns */}
-             <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>
+             {/* Background Tech Patterns (Only if no custom image) */}
+             {!backgroundImage && <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>}
           </div>
         )}
 

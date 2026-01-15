@@ -11,7 +11,7 @@ import {
   QrCode, Lock, Unlock, RefreshCw, 
   Calendar, MapPin, Settings, Loader2, ChevronRight,
   UserPlus, Scan, Home as HomeIcon, Users, LayoutDashboard, Save, Type, Map as MapIcon,
-  FileText, Power, EyeOff, Menu
+  FileText, Power, EyeOff, Menu, Palette, Image as ImageIcon, Upload, Trash
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -25,6 +25,17 @@ import { ConfirmationModal } from './components/ConfirmationModal';
 const API_URL = "https://script.google.com/macros/s/AKfycbySVo23szeqz9l9tOV4ZAy1uiTv9M_HDNh8crsrjV07paiMcwU7BXlULcJQ3PH5JA/exec";
 const TARGET_SPREADSHEET_ID = "1nZlbcEAsehvi_fIehXASjgiLiplqB9nOxAWTD2KbmG8";
 
+// Theme Presets
+const THEME_PRESETS = [
+  { name: 'Default Violet', color: '#8b5cf6' },
+  { name: 'Ocean Blue', color: '#3b82f6' },
+  { name: 'Emerald Green', color: '#10b981' },
+  { name: 'Sunset Orange', color: '#f97316' },
+  { name: 'Royal Gold', color: '#eab308' },
+  { name: 'Rose Pink', color: '#f43f5e' },
+  { name: 'Midnight', color: '#334155' },
+];
+
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'home' | 'scan' | 'register' | 'events' | 'report'>('home');
   const [manageSubTab, setManageSubTab] = useState<'events' | 'users' | 'map'>('users');
@@ -35,7 +46,9 @@ const App: React.FC = () => {
     isRegistrationOpen: true,
     isScanningOpen: true,
     allowPublicDashboard: true,
-    ownerCredit: 'Developed by EventCheck System'
+    ownerCredit: 'Developed by EventCheck System',
+    themeColor: '#8b5cf6', // Default Violet
+    scannerBackground: ''
   });
   
   const [isLoading, setIsLoading] = useState(true);
@@ -98,7 +111,12 @@ const App: React.FC = () => {
          }
       }
 
-      setSystemSettings(prev => ({ ...prev, ...data.settings }));
+      setSystemSettings(prev => ({ 
+        ...prev, 
+        ...data.settings,
+        // Ensure defaults if missing from cloud
+        themeColor: data.settings?.themeColor || '#8b5cf6'
+      }));
 
       if (!hasRouted) {
         if (data.settings?.isScanningOpen) setActiveTab('scan');
@@ -130,6 +148,45 @@ const App: React.FC = () => {
     }
   }, [isAdmin, events, selectedEventId]);
 
+  // --- Dynamic Theme Injection ---
+  useEffect(() => {
+    const color = systemSettings.themeColor || '#8b5cf6';
+    
+    // Helper to convert hex to rgba
+    const hexToRgba = (hex: string, alpha: number) => {
+      let r = 0, g = 0, b = 0;
+      if (hex.length === 4) {
+        r = parseInt("0x" + hex[1] + hex[1]);
+        g = parseInt("0x" + hex[2] + hex[2]);
+        b = parseInt("0x" + hex[3] + hex[3]);
+      } else if (hex.length === 7) {
+        r = parseInt("0x" + hex[1] + hex[2]);
+        g = parseInt("0x" + hex[3] + hex[4]);
+        b = parseInt("0x" + hex[5] + hex[6]);
+      }
+      return `rgba(${r},${g},${b},${alpha})`;
+    };
+
+    const styleId = 'dynamic-theme-style';
+    let styleTag = document.getElementById(styleId);
+    if (!styleTag) {
+      styleTag = document.createElement('style');
+      styleTag.id = styleId;
+      document.head.appendChild(styleTag);
+    }
+
+    // We override specific Violet classes used in the app to the new selected color
+    styleTag.innerHTML = `
+      .bg-violet-600, .bg-violet-500, .hover\\:bg-violet-600:hover, .hover\\:bg-violet-500:hover { background-color: ${color} !important; }
+      .text-violet-600, .text-violet-500, .text-violet-700, .hover\\:text-violet-600:hover, .hover\\:text-violet-500:hover { color: ${color} !important; }
+      .border-violet-600, .border-violet-500, .border-violet-100, .hover\\:border-violet-300:hover { border-color: ${color} !important; }
+      .shadow-violet-100, .shadow-violet-200 { --tw-shadow-color: ${hexToRgba(color, 0.3)} !important; }
+      .bg-violet-100, .bg-violet-50, .hover\\:bg-violet-50:hover, .hover\\:bg-violet-100:hover { background-color: ${hexToRgba(color, 0.1)} !important; }
+      .ring-violet-100 { --tw-ring-color: ${hexToRgba(color, 0.2)} !important; }
+      .to-fuchsia-500 { --tw-gradient-to: ${color} !important; } /* Simplify gradient for custom themes */
+    `;
+  }, [systemSettings.themeColor]);
+
   const currentEventUsers = useMemo(() => users.filter(u => String(u.eventId) === String(selectedEventId)), [users, selectedEventId]);
 
   const postAction = async (payload: any) => {
@@ -150,6 +207,24 @@ const App: React.FC = () => {
   const handleUpdateSettings = async (newSettings: SystemSettings) => {
     setSystemSettings(newSettings);
     await postAction({ action: "updateSettings", settings: newSettings });
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Check file size (limit to 2MB for base64 safety in AppScript/Spreadsheet)
+      if (file.size > 2 * 1024 * 1024) {
+        alert("ขนาดไฟล์รูปภาพต้องไม่เกิน 2MB");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        setSystemSettings(prev => ({ ...prev, scannerBackground: base64String }));
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleCheckIn = async (scannedValue: string, meta?: { location: string; device: string }) => {
@@ -342,7 +417,7 @@ const App: React.FC = () => {
   const visibleEvents = isAdmin ? events : events.filter(e => e.isActive);
 
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-slate-50 font-sans overflow-hidden">
+    <div className="min-h-[100dvh] flex flex-col bg-slate-50 font-sans overflow-hidden transition-colors duration-500">
       {/* Header - Responsive */}
       <header className="bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-40 border-b border-violet-100 shrink-0 print:hidden">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -462,6 +537,7 @@ const App: React.FC = () => {
                 onScan={handleCheckIn} 
                 pauseFocus={showLogin || confirmState.isOpen}
                 onRegisterRedirect={handleScanRedirect}
+                backgroundImage={systemSettings.scannerBackground}
               />
 
               {(systemSettings.allowPublicDashboard || isAdmin) && (
@@ -590,6 +666,77 @@ const App: React.FC = () => {
                             <h3 className="font-bold text-lg mb-1">แดชบอร์ดสาธารณะ</h3>
                             <p className={`text-xs ${systemSettings.allowPublicDashboard ? 'text-blue-100' : 'text-slate-400'}`}>{systemSettings.allowPublicDashboard ? 'แสดงผล (Visible)' : 'ซ่อน (Hidden)'}</p>
                         </div>
+                   </div>
+
+                   {/* --- Theme & Appearance Settings (NEW) --- */}
+                   <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                      <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                        <Palette className="w-5 h-5 text-slate-400" /> การแสดงผล (Appearance)
+                      </h3>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                          {/* Color Theme */}
+                          <div className="space-y-4">
+                              <label className="text-xs font-bold text-slate-400 uppercase">ธีมสีของระบบ (Theme Color)</label>
+                              <div className="flex flex-wrap gap-3">
+                                  {THEME_PRESETS.map((theme) => (
+                                    <button
+                                      key={theme.color}
+                                      onClick={() => handleUpdateSettings({...systemSettings, themeColor: theme.color})}
+                                      className={`w-10 h-10 rounded-full border-2 transition-all hover:scale-110 ${systemSettings.themeColor === theme.color ? 'border-slate-800 ring-2 ring-slate-200' : 'border-transparent'}`}
+                                      style={{ backgroundColor: theme.color }}
+                                      title={theme.name}
+                                    />
+                                  ))}
+                                  <div className="relative group">
+                                     <input 
+                                        type="color" 
+                                        value={systemSettings.themeColor} 
+                                        onChange={(e) => handleUpdateSettings({...systemSettings, themeColor: e.target.value})}
+                                        className="w-10 h-10 p-0 border-0 rounded-full overflow-hidden cursor-pointer opacity-0 absolute inset-0" 
+                                     />
+                                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-500 via-green-500 to-blue-500 border-2 border-slate-100 flex items-center justify-center shadow-inner pointer-events-none">
+                                        <div className="w-4 h-4 bg-white rounded-full shadow-sm"></div>
+                                     </div>
+                                  </div>
+                              </div>
+                              <p className="text-xs text-slate-400">เลือกสีจากรายการ หรือกดที่วงล้อสีเพื่อกำหนดเอง</p>
+                          </div>
+
+                          {/* Scanner Background */}
+                          <div className="space-y-4">
+                              <label className="text-xs font-bold text-slate-400 uppercase flex items-center gap-2">
+                                <ImageIcon className="w-4 h-4" /> พื้นหลังหน้าสแกน (Scanner Background)
+                              </label>
+                              
+                              <div className="flex gap-4 items-start">
+                                  <div className="w-32 h-20 bg-slate-100 rounded-xl overflow-hidden border border-slate-200 relative shrink-0">
+                                      {systemSettings.scannerBackground ? (
+                                        <img src={systemSettings.scannerBackground} alt="Preview" className="w-full h-full object-cover" />
+                                      ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                            <ImageIcon className="w-8 h-8" />
+                                        </div>
+                                      )}
+                                  </div>
+                                  <div className="flex-1 space-y-2">
+                                      <label className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors w-full">
+                                          <Upload className="w-4 h-4" /> อัปโหลดรูปภาพ
+                                          <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                                      </label>
+                                      {systemSettings.scannerBackground && (
+                                        <button 
+                                          onClick={() => handleUpdateSettings({...systemSettings, scannerBackground: ''})}
+                                          className="flex items-center justify-center gap-2 px-4 py-2 bg-rose-50 text-rose-500 rounded-xl text-xs font-bold hover:bg-rose-100 w-full"
+                                        >
+                                          <Trash className="w-3 h-3" /> ลบรูปภาพ
+                                        </button>
+                                      )}
+                                      <p className="text-[10px] text-slate-400">รองรับไฟล์ภาพขนาดไม่เกิน 2MB (jpg, png)</p>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
                    </div>
 
                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
