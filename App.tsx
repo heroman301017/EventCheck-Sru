@@ -37,7 +37,8 @@ const THEME_PRESETS = [
 ];
 
 // Helper to safely parse boolean values from Google Sheets
-const safeBool = (val: any, defaultVal: boolean) => {
+// FORCE DEFAULT TO TRUE if undefined to prevent system lockout
+const safeBool = (val: any, defaultVal: boolean = true) => {
   if (val === undefined || val === null || val === '') return defaultVal;
   if (typeof val === 'string') {
       const lower = val.toLowerCase();
@@ -56,7 +57,7 @@ const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   
-  // Initialize settings from LocalStorage first
+  // Initialize settings - FORCE DEFAULTS TO TRUE
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => {
     try {
       const saved = localStorage.getItem('systemSettings');
@@ -106,6 +107,19 @@ const App: React.FC = () => {
     onConfirm: () => {}
   });
 
+  // Effect to handle automatic routing based on settings
+  useEffect(() => {
+    if (!isLoading && !hasRouted) {
+       // Priority: Scan > Register > Home
+       if (systemSettings.isScanningOpen) {
+          setActiveTab('scan');
+       } else if (systemSettings.isRegistrationOpen) {
+          setActiveTab('register');
+       }
+       setHasRouted(true);
+    }
+  }, [isLoading, hasRouted, systemSettings]);
+
   const fetchData = async () => {
     try {
       const response = await fetch(`${API_URL}?action=getUsers&t=${Date.now()}`, {
@@ -142,10 +156,11 @@ const App: React.FC = () => {
       }
 
       // Sync settings from server
+      // CRITICAL FIX: Ensure we default to TRUE if values are missing from server
       if (data.settings) {
           const serverSettings = { 
             ...systemSettings, 
-            ...data.settings, // Merge everything from server
+            ...data.settings,
             isRegistrationOpen: safeBool(data.settings.isRegistrationOpen, true),
             isScanningOpen: safeBool(data.settings.isScanningOpen, true),
             allowPublicDashboard: safeBool(data.settings.allowPublicDashboard, true),
@@ -155,15 +170,6 @@ const App: React.FC = () => {
           
           setSystemSettings(serverSettings);
           localStorage.setItem('systemSettings', JSON.stringify(serverSettings));
-      }
-
-      if (!hasRouted) {
-        const regOpen = systemSettings.isRegistrationOpen;
-        const scanOpen = systemSettings.isScanningOpen;
-
-        if (scanOpen) setActiveTab('scan');
-        else if (regOpen) setActiveTab('register');
-        setHasRouted(true);
       }
     } catch (error) {
       console.error("Fetch Error:", error);
