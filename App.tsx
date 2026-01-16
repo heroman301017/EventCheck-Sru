@@ -385,22 +385,32 @@ const App: React.FC = () => {
   const handleCreateEvent = async (event: Event) => {
     setEvents(prev => [...prev, event]);
     setSelectedEventId(event.id);
-    const rowData = [event.id, event.name, event.date, event.location, event.description || '-', event.isActive];
+    
+    // Explicitly set isActive to boolean
+    const isActiveVal = event.isActive !== undefined ? event.isActive : true;
+    const rowData = [event.id, event.name, event.date, event.location, event.description || '-', isActiveVal];
+    
     await postAction({ 
       action: "createEvent", 
       spreadsheetId: TARGET_SPREADSHEET_ID, sheetName: "Events", sheet: "Events",
-      id: event.id, name: event.name, date: event.date, location: event.location, description: event.description || '-', isActive: event.isActive,
+      id: event.id, name: event.name, date: event.date, location: event.location, description: event.description || '-', 
+      isActive: isActiveVal, // Send explicit boolean
       event: event, data: rowData, values: rowData, row: rowData
     });
   };
 
   const handleUpdateEvent = async (event: Event) => {
     setEvents(prev => prev.map(e => e.id === event.id ? event : e));
-    const rowData = [event.id, event.name, event.date, event.location, event.description || '-', event.isActive];
+    
+    // Explicitly set isActive to boolean
+    const isActiveVal = event.isActive !== undefined ? event.isActive : true;
+    const rowData = [event.id, event.name, event.date, event.location, event.description || '-', isActiveVal];
+    
     await postAction({ 
       action: "updateEvent", 
       spreadsheetId: TARGET_SPREADSHEET_ID, sheetName: "Events", sheet: "Events",
-      id: event.id, name: event.name, date: event.date, location: event.location, description: event.description || '-', isActive: event.isActive,
+      id: event.id, name: event.name, date: event.date, location: event.location, description: event.description || '-', 
+      isActive: isActiveVal, // Send explicit boolean
       event: event, data: rowData, values: rowData, row: rowData
     });
   };
