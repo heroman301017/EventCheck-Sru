@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { User } from '../types';
-import { Search, Download, Check, Clock, QrCode, Edit2, LogOut, FileText, FileSpreadsheet, X, Save, Upload, Trash2 } from 'lucide-react';
+import { Search, FileSpreadsheet, Edit2, QrCode, X, Save, Upload, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import * as XLSX from 'xlsx';
 
@@ -12,11 +12,9 @@ interface UserListProps {
   onUpdateUser: (user: User) => void;
   onDeleteUser: (id: number) => void;
   onImportUsers: (users: any[]) => void;
-  onExportCSV: () => void;
-  onExportPDF: () => void;
 }
 
-export const UserList: React.FC<UserListProps> = ({ users, isEditable, onUpdateUser, onDeleteUser, onImportUsers, onExportCSV, onExportPDF }) => {
+export const UserList: React.FC<UserListProps> = ({ users, isEditable, onUpdateUser, onDeleteUser, onImportUsers }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'checked-in' | 'checked-out' | 'pending'>('all');
   const [selectedQr, setSelectedQr] = useState<User | null>(null);
@@ -33,6 +31,31 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onUpdateU
     const matchesFilter = filter === 'all' ? true : user.status === filter;
     return matchesSearch && matchesFilter;
   });
+
+  const handleExportXLSX = () => {
+    if (filteredUsers.length === 0) {
+      alert("ไม่พบข้อมูลสำหรับส่งออก");
+      return;
+    }
+
+    const dataToExport = filteredUsers.map((u, index) => ({
+      "No.": index + 1,
+      "Student ID": u.studentId,
+      "Name": u.name,
+      "Phone": u.phone,
+      "Faculty": u.faculty,
+      "Major": u.major,
+      "Status": u.status,
+      "Check In Time": u.checkInTime || '-',
+      "Check Out Time": u.checkOutTime || '-',
+      "Location": u.location || '-'
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Participants");
+    XLSX.writeFile(wb, `participants_export_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -114,11 +137,8 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onUpdateU
           )}
 
           <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
-            <button onClick={onExportCSV} title="Export CSV" className="flex items-center gap-2 px-3 py-2 text-teal-600 hover:bg-white rounded-lg text-sm font-bold transition-all">
-              <FileSpreadsheet className="w-4 h-4" />
-            </button>
-            <button onClick={onExportPDF} title="Export PDF" className="flex items-center gap-2 px-3 py-2 text-rose-500 hover:bg-white rounded-lg text-sm font-bold transition-all">
-              <FileText className="w-4 h-4" />
+            <button onClick={handleExportXLSX} title="Export Excel" className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white hover:bg-emerald-600 rounded-lg text-sm font-bold transition-all shadow-sm">
+              <FileSpreadsheet className="w-4 h-4" /> Export XLSX
             </button>
           </div>
         </div>

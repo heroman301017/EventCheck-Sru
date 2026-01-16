@@ -13,8 +13,6 @@ import {
   UserPlus, Scan, Home as HomeIcon, Users, LayoutDashboard, Save, Type, Map as MapIcon,
   FileText, Power, EyeOff, Menu, Palette, Image as ImageIcon, Upload, Trash, CheckCircle2
 } from 'lucide-react';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { RegistrationForm } from './components/RegistrationForm';
 import { EventPass } from './components/EventPass';
 import { EventManager } from './components/EventManager';
@@ -715,7 +713,7 @@ const App: React.FC = () => {
                       onAddUser={(name, phone) => handleRegister({name, phone})} 
                       onUpdateUser={handleUpdateUser} 
                       onDeleteUser={handleDeleteUser} 
-                      onImportUsers={()=>{}} onExportCSV={()=>{}} onExportPDF={()=>{}} 
+                      onImportUsers={()=>{}} 
                     />
                  </div>
                )}
