@@ -11,7 +11,7 @@ import {
   QrCode, Lock, Unlock, RefreshCw, 
   Calendar, MapPin, Settings, Loader2, ChevronRight,
   UserPlus, Scan, Home as HomeIcon, Users, LayoutDashboard, Save, Type, Map as MapIcon,
-  FileText, Power, EyeOff, Menu, Palette, Image as ImageIcon, Upload, Trash, CheckCircle2
+  FileText, Power, EyeOff, Menu, Palette, Image as ImageIcon, Upload, Trash, CheckCircle2, Link as LinkIcon
 } from 'lucide-react';
 import { RegistrationForm } from './components/RegistrationForm';
 import { EventPass } from './components/EventPass';
@@ -802,6 +802,7 @@ const App: React.FC = () => {
                               </label>
                               
                               <div className="flex gap-4 items-start">
+                                  {/* Preview */}
                                   <div className="w-32 h-20 bg-slate-100 rounded-xl overflow-hidden border border-slate-200 relative shrink-0">
                                       {systemSettings.scannerBackground ? (
                                         <img src={systemSettings.scannerBackground} alt="Preview" className="w-full h-full object-cover" />
@@ -811,11 +812,33 @@ const App: React.FC = () => {
                                         </div>
                                       )}
                                   </div>
-                                  <div className="flex-1 space-y-2">
-                                      <label className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors w-full">
-                                          <Upload className="w-4 h-4" /> อัปโหลดรูปภาพ
+                                  
+                                  {/* Inputs */}
+                                  <div className="flex-1 space-y-3">
+                                      {/* URL Input */}
+                                      <div>
+                                          <input 
+                                            type="text" 
+                                            placeholder="วางลิงก์รูปภาพ (Image URL)..."
+                                            value={systemSettings.scannerBackground || ''}
+                                            onChange={(e) => setSystemSettings({...systemSettings, scannerBackground: e.target.value})}
+                                            onBlur={() => handleUpdateSettings(systemSettings)}
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-100 transition-all"
+                                          />
+                                      </div>
+
+                                      <div className="flex items-center gap-2">
+                                          <div className="h-px flex-1 bg-slate-100"></div>
+                                          <span className="text-[10px] text-slate-300 uppercase">หรือ</span>
+                                          <div className="h-px flex-1 bg-slate-100"></div>
+                                      </div>
+
+                                      {/* Upload Button */}
+                                      <label className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors w-full">
+                                          <Upload className="w-3 h-3" /> อัปโหลดไฟล์
                                           <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                                       </label>
+                                      
                                       {systemSettings.scannerBackground && (
                                         <button 
                                           onClick={() => handleUpdateSettings({...systemSettings, scannerBackground: ''})}
@@ -824,9 +847,9 @@ const App: React.FC = () => {
                                           <Trash className="w-3 h-3" /> ลบรูปภาพ
                                         </button>
                                       )}
-                                      <p className="text-[10px] text-slate-400">รองรับไฟล์ภาพขนาดไม่เกิน 2MB (ระบบจะทำการย่อขนาดอัตโนมัติ)</p>
                                   </div>
                               </div>
+                              <p className="text-[10px] text-slate-400 pl-36">รองรับ Image URL หรือไฟล์ภาพขนาดไม่เกิน 2MB</p>
                           </div>
                       </div>
                    </div>
