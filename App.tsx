@@ -37,10 +37,11 @@ const THEME_PRESETS = [
 ];
 
 // Helper to safely parse boolean values from Google Sheets
-// CRITICAL: Force Default to TRUE to prevent "System Closed" error
+// FORCE DEFAULT TO TRUE: If value is missing, undefined, or null, return TRUE (Open)
 const safeBool = (val: any, defaultVal: boolean = true) => {
   if (val === undefined || val === null || val === '') return defaultVal;
   const strVal = String(val).toLowerCase().trim();
+  // Only return false if explicitly set to false/off/0
   if (strVal === 'false' || strVal === '0' || strVal === 'off' || strVal === 'no') return false;
   return true;
 };
@@ -53,14 +54,13 @@ const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   
-  // Initialize settings - FORCE OPEN BY DEFAULT
+  // Initialize settings - FORCE OPEN BY DEFAULT in useState
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => {
     try {
       const saved = localStorage.getItem('systemSettings');
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Safety check: If both are false, it might be a bug or old state. 
-        // We bias towards OPEN.
+        // Safety: If somehow everything is false (bug), force it open
         if (parsed.isRegistrationOpen === false && parsed.isScanningOpen === false) {
            return { ...parsed, isRegistrationOpen: true, isScanningOpen: true };
         }
@@ -69,7 +69,7 @@ const App: React.FC = () => {
     } catch (e) {
       console.error("Settings parse error", e);
     }
-    // DEFAULT STATE: OPEN
+    // ABSOLUTE DEFAULT STATE: EVERYTHING OPEN
     return {
       isRegistrationOpen: true,
       isScanningOpen: true,
@@ -105,10 +105,13 @@ const App: React.FC = () => {
     onConfirm: () => {}
   });
 
-  // Ensure we are on a valid tab on mount
+  // Auto-route on mount if system is open
   useEffect(() => {
-     if (systemSettings.isScanningOpen) setActiveTab('scan');
-     else if (systemSettings.isRegistrationOpen) setActiveTab('register');
+     if (systemSettings.isScanningOpen) {
+       setActiveTab('scan');
+     } else if (systemSettings.isRegistrationOpen) {
+       setActiveTab('register');
+     }
   }, []);
 
   const fetchData = async () => {
@@ -161,6 +164,11 @@ const App: React.FC = () => {
           
           setSystemSettings(serverSettings);
           localStorage.setItem('systemSettings', JSON.stringify(serverSettings));
+
+          // Re-evaluate routing after fetch
+          if (activeTab === 'home' && serverSettings.isScanningOpen) {
+             setActiveTab('scan');
+          }
       }
     } catch (error) {
       console.error("Fetch Error:", error);
