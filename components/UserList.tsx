@@ -3,6 +3,7 @@ import React, { useState, useRef } from 'react';
 import { User } from '../types';
 import { Search, Download, Check, Clock, QrCode, Edit2, LogOut, FileText, FileSpreadsheet, X, Save, Upload, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import * as XLSX from 'xlsx';
 
 interface UserListProps {
   users: User[];
@@ -39,28 +40,39 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onUpdateU
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const text = event.target?.result as string;
-      const lines = text.split(/\r?\n/);
-      // Skip header, allow missing values by replacing with empty strings
-      const data = lines.slice(1).filter(line => line.trim().length > 0).map(line => {
-        const columns = line.split(',').map(c => c.trim().replace(/^["']|["']$/g, '').replace(/^'/, ''));
-        return {
-          studentId: columns[0] || '',
-          name: columns[1] || '',
-          phone: columns[2] || '',
-          faculty: columns[3] || '',
-          major: columns[4] || ''
-        };
-      });
-      
-      if (data.length > 0) {
-        onImportUsers(data);
-        alert(`นำเข้าข้อมูลสำเร็จ ${data.length} รายการ`);
-      } else {
-        alert('ไม่พบข้อมูลในไฟล์ หรือไฟล์ไม่มีข้อมูล');
+      try {
+        const data = event.target?.result;
+        const workbook = XLSX.read(data, { type: 'binary' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        
+        // Convert sheet to JSON array (header: 1 returns array of arrays)
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+        
+        // Remove header row and map data
+        // Assumes columns: [Student ID, Name, Phone, Faculty, Major]
+        const importedUsers = jsonData.slice(1)
+            .filter(row => row.length > 0 && (row[0] || row[1])) // Ensure at least ID or Name exists
+            .map(row => ({
+                studentId: row[0] ? String(row[0]).trim() : '',
+                name: row[1] ? String(row[1]).trim() : '',
+                phone: row[2] ? String(row[2]).trim() : '',
+                faculty: row[3] ? String(row[3]).trim() : '',
+                major: row[4] ? String(row[4]).trim() : ''
+            }));
+
+        if (importedUsers.length > 0) {
+            onImportUsers(importedUsers);
+            alert(`นำเข้าข้อมูลสำเร็จ ${importedUsers.length} รายการจากไฟล์ Excel`);
+        } else {
+            alert('ไม่พบข้อมูลในไฟล์ หรือรูปแบบข้อมูลไม่ถูกต้อง');
+        }
+      } catch (error) {
+        console.error("Excel Import Error:", error);
+        alert('เกิดข้อผิดพลาดในการอ่านไฟล์ Excel กรุณาตรวจสอบไฟล์');
       }
     };
-    reader.readAsText(file);
+    reader.readAsBinaryString(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -94,9 +106,9 @@ export const UserList: React.FC<UserListProps> = ({ users, isEditable, onUpdateU
 
           {isEditable && (
             <>
-              <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
+              <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" className="hidden" />
               <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2.5 bg-violet-50 text-violet-600 border border-violet-100 rounded-xl text-sm font-bold hover:bg-violet-100 transition-all">
-                <Upload className="w-4 h-4" /> Import CSV
+                <Upload className="w-4 h-4" /> Import Excel
               </button>
             </>
           )}

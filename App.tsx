@@ -36,6 +36,19 @@ const THEME_PRESETS = [
   { name: 'Midnight', color: '#334155' },
 ];
 
+// Helper to safely parse boolean values from Google Sheets (which might be "TRUE", "FALSE", 1, 0, or undefined)
+const safeBool = (val: any, defaultVal: boolean) => {
+  if (val === undefined || val === null || val === '') return defaultVal;
+  if (typeof val === 'string') {
+      const lower = val.toLowerCase();
+      return lower === 'true' || lower === '1';
+  }
+  if (typeof val === 'number') {
+      return val === 1;
+  }
+  return !!val;
+};
+
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'home' | 'scan' | 'register' | 'events' | 'report'>('home');
   const [manageSubTab, setManageSubTab] = useState<'events' | 'users' | 'map'>('users');
@@ -101,7 +114,7 @@ const App: React.FC = () => {
       if (events.length === 0 || data.events?.length > 0) {
          const loadedEvents = (data.events || []).map((e: any) => ({
              ...e,
-             isActive: e.isActive === false || e.isActive === 'FALSE' || e.isActive === 'false' ? false : true
+             isActive: safeBool(e.isActive, true)
          }));
          setEvents(loadedEvents);
          
@@ -111,16 +124,24 @@ const App: React.FC = () => {
          }
       }
 
-      setSystemSettings(prev => ({ 
-        ...prev, 
-        ...data.settings,
-        // Ensure defaults if missing from cloud
-        themeColor: data.settings?.themeColor || '#8b5cf6'
-      }));
+      // Robustly set settings, defaulting to TRUE if keys are missing to prevent "System Closed" error
+      if (data.settings) {
+          setSystemSettings(prev => ({ 
+            ...prev, 
+            ...data.settings,
+            isRegistrationOpen: safeBool(data.settings.isRegistrationOpen, true),
+            isScanningOpen: safeBool(data.settings.isScanningOpen, true),
+            allowPublicDashboard: safeBool(data.settings.allowPublicDashboard, true),
+            themeColor: data.settings.themeColor || '#8b5cf6'
+          }));
+      }
 
       if (!hasRouted) {
-        if (data.settings?.isScanningOpen) setActiveTab('scan');
-        else if (data.settings?.isRegistrationOpen) setActiveTab('register');
+        const regOpen = data.settings ? safeBool(data.settings.isRegistrationOpen, true) : true;
+        const scanOpen = data.settings ? safeBool(data.settings.isScanningOpen, true) : true;
+
+        if (scanOpen) setActiveTab('scan');
+        else if (regOpen) setActiveTab('register');
         setHasRouted(true);
       }
     } catch (error) {
@@ -221,7 +242,9 @@ const App: React.FC = () => {
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64String = reader.result as string;
-        setSystemSettings(prev => ({ ...prev, scannerBackground: base64String }));
+        // FIX: Create new object and immediately call API to save
+        const newSettings = { ...systemSettings, scannerBackground: base64String };
+        handleUpdateSettings(newSettings);
       };
       reader.readAsDataURL(file);
     }
@@ -692,7 +715,8 @@ const App: React.FC = () => {
                                      <input 
                                         type="color" 
                                         value={systemSettings.themeColor} 
-                                        onChange={(e) => handleUpdateSettings({...systemSettings, themeColor: e.target.value})}
+                                        onChange={(e) => setSystemSettings({...systemSettings, themeColor: e.target.value})} // Only update local state for preview
+                                        onBlur={() => handleUpdateSettings(systemSettings)} // Save to server when done
                                         className="w-10 h-10 p-0 border-0 rounded-full overflow-hidden cursor-pointer opacity-0 absolute inset-0" 
                                      />
                                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-500 via-green-500 to-blue-500 border-2 border-slate-100 flex items-center justify-center shadow-inner pointer-events-none">
