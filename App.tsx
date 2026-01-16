@@ -11,7 +11,7 @@ import {
   QrCode, Lock, Unlock, RefreshCw, 
   Calendar, MapPin, Settings, Loader2, ChevronRight,
   UserPlus, Scan, Home as HomeIcon, Users, LayoutDashboard, Save, Type, Map as MapIcon,
-  FileText, Power, EyeOff, Menu, Palette, Image as ImageIcon, Upload, Trash
+  FileText, Power, EyeOff, Menu, Palette, Image as ImageIcon, Upload, Trash, CheckCircle2
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -65,6 +65,7 @@ const App: React.FC = () => {
   });
   
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false); // New state for saving indicator
   const [hasRouted, setHasRouted] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [eventForRegistration, setEventForRegistration] = useState<Event | null>(null);
@@ -132,7 +133,8 @@ const App: React.FC = () => {
             isRegistrationOpen: safeBool(data.settings.isRegistrationOpen, true),
             isScanningOpen: safeBool(data.settings.isScanningOpen, true),
             allowPublicDashboard: safeBool(data.settings.allowPublicDashboard, true),
-            themeColor: data.settings.themeColor || '#8b5cf6'
+            themeColor: data.settings.themeColor || '#8b5cf6',
+            scannerBackground: data.settings.scannerBackground || ''
           }));
       }
 
@@ -226,8 +228,16 @@ const App: React.FC = () => {
   };
 
   const handleUpdateSettings = async (newSettings: SystemSettings) => {
+    setIsSaving(true);
     setSystemSettings(newSettings);
-    await postAction({ action: "updateSettings", settings: newSettings });
+    // Debounce/Delay slightly to ensure UI updates first
+    try {
+      await postAction({ action: "updateSettings", settings: newSettings });
+    } catch(e) {
+      console.error("Save failed", e);
+    } finally {
+      setTimeout(() => setIsSaving(false), 500); // Visual feedback delay
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -440,7 +450,14 @@ const App: React.FC = () => {
   const visibleEvents = isAdmin ? events : events.filter(e => e.isActive);
 
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-slate-50 font-sans overflow-hidden transition-colors duration-500">
+    <div className="min-h-[100dvh] flex flex-col bg-slate-50 font-sans overflow-hidden transition-colors duration-500 relative">
+      
+      {/* Saving Indicator */}
+      <div className={`fixed bottom-4 right-4 z-[100] bg-slate-900 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 transition-all duration-300 ${isSaving ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0'}`}>
+         <Loader2 className="w-4 h-4 animate-spin" />
+         <span className="text-xs font-bold">บันทึกการตั้งค่า...</span>
+      </div>
+
       {/* Header - Responsive */}
       <header className="bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-40 border-b border-violet-100 shrink-0 print:hidden">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -543,7 +560,10 @@ const App: React.FC = () => {
                <div className="text-center p-8 bg-slate-100 rounded-3xl max-w-md mx-auto">
                  <Power className="w-12 h-12 text-slate-300 mx-auto mb-4" />
                  <h3 className="text-xl font-bold text-slate-600">ระบบปิดให้บริการชั่วคราว</h3>
-                 <p className="text-slate-400 mt-2">กรุณาติดต่อผู้ดูแลระบบ</p>
+                 <p className="text-slate-400 mt-2 mb-6">กรุณาติดต่อผู้ดูแลระบบ</p>
+                 <button onClick={() => setShowLogin(true)} className="px-6 py-2.5 bg-slate-800 text-white rounded-xl font-bold text-sm shadow-lg hover:bg-slate-700 transition-all flex items-center gap-2 mx-auto">
+                    <Lock className="w-4 h-4" /> ผู้ดูแลระบบ (Admin)
+                 </button>
                </div>
              )}
           </div>
