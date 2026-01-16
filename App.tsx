@@ -37,53 +37,51 @@ const THEME_PRESETS = [
 ];
 
 // Helper to safely parse boolean values from Google Sheets
-// FORCE DEFAULT TO TRUE if undefined to prevent system lockout
+// CRITICAL: Force Default to TRUE to prevent "System Closed" error
 const safeBool = (val: any, defaultVal: boolean = true) => {
   if (val === undefined || val === null || val === '') return defaultVal;
-  if (typeof val === 'string') {
-      const lower = val.toLowerCase();
-      return lower === 'true' || lower === '1';
-  }
-  if (typeof val === 'number') {
-      return val === 1;
-  }
-  return !!val;
+  const strVal = String(val).toLowerCase().trim();
+  if (strVal === 'false' || strVal === '0' || strVal === 'off' || strVal === 'no') return false;
+  return true;
 };
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'home' | 'scan' | 'register' | 'events' | 'report'>('home');
+  // Determine initial active tab: prioritize scan > register > home
+  const [activeTab, setActiveTab] = useState<'home' | 'scan' | 'register' | 'events' | 'report'>('scan');
   const [manageSubTab, setManageSubTab] = useState<'events' | 'users' | 'map'>('users');
   
   const [users, setUsers] = useState<User[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   
-  // Initialize settings - FORCE DEFAULTS TO TRUE
+  // Initialize settings - FORCE OPEN BY DEFAULT
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => {
     try {
       const saved = localStorage.getItem('systemSettings');
-      return saved ? JSON.parse(saved) : {
-        isRegistrationOpen: true,
-        isScanningOpen: true,
-        allowPublicDashboard: true,
-        ownerCredit: 'Developed by EventCheck System',
-        themeColor: '#8b5cf6',
-        scannerBackground: ''
-      };
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Safety check: If both are false, it might be a bug or old state. 
+        // We bias towards OPEN.
+        if (parsed.isRegistrationOpen === false && parsed.isScanningOpen === false) {
+           return { ...parsed, isRegistrationOpen: true, isScanningOpen: true };
+        }
+        return parsed;
+      }
     } catch (e) {
-      return {
-        isRegistrationOpen: true,
-        isScanningOpen: true,
-        allowPublicDashboard: true,
-        ownerCredit: 'Developed by EventCheck System',
-        themeColor: '#8b5cf6',
-        scannerBackground: ''
-      };
+      console.error("Settings parse error", e);
     }
+    // DEFAULT STATE: OPEN
+    return {
+      isRegistrationOpen: true,
+      isScanningOpen: true,
+      allowPublicDashboard: true,
+      ownerCredit: 'Developed by EventCheck System',
+      themeColor: '#8b5cf6',
+      scannerBackground: ''
+    };
   });
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [hasRouted, setHasRouted] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [eventForRegistration, setEventForRegistration] = useState<Event | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -107,18 +105,11 @@ const App: React.FC = () => {
     onConfirm: () => {}
   });
 
-  // Effect to handle automatic routing based on settings
+  // Ensure we are on a valid tab on mount
   useEffect(() => {
-    if (!isLoading && !hasRouted) {
-       // Priority: Scan > Register > Home
-       if (systemSettings.isScanningOpen) {
-          setActiveTab('scan');
-       } else if (systemSettings.isRegistrationOpen) {
-          setActiveTab('register');
-       }
-       setHasRouted(true);
-    }
-  }, [isLoading, hasRouted, systemSettings]);
+     if (systemSettings.isScanningOpen) setActiveTab('scan');
+     else if (systemSettings.isRegistrationOpen) setActiveTab('register');
+  }, []);
 
   const fetchData = async () => {
     try {
@@ -155,17 +146,17 @@ const App: React.FC = () => {
          }
       }
 
-      // Sync settings from server
-      // CRITICAL FIX: Ensure we default to TRUE if values are missing from server
+      // Sync settings from server but prioritize OPEN if values are missing
       if (data.settings) {
           const serverSettings = { 
             ...systemSettings, 
             ...data.settings,
+            // Force true if undefined/null/empty
             isRegistrationOpen: safeBool(data.settings.isRegistrationOpen, true),
             isScanningOpen: safeBool(data.settings.isScanningOpen, true),
             allowPublicDashboard: safeBool(data.settings.allowPublicDashboard, true),
-            themeColor: data.settings.themeColor || '#8b5cf6',
-            scannerBackground: data.settings.scannerBackground || ''
+            themeColor: data.settings.themeColor || systemSettings.themeColor || '#8b5cf6',
+            scannerBackground: data.settings.scannerBackground || systemSettings.scannerBackground || ''
           };
           
           setSystemSettings(serverSettings);
@@ -392,7 +383,7 @@ const App: React.FC = () => {
     setEvents(prev => [...prev, event]);
     setSelectedEventId(event.id);
     
-    // Explicitly set isActive to boolean
+    // Explicitly set isActive to boolean for Column F
     const isActiveVal = event.isActive !== undefined ? event.isActive : true;
     const rowData = [event.id, event.name, event.date, event.location, event.description || '-', isActiveVal];
     
@@ -408,7 +399,7 @@ const App: React.FC = () => {
   const handleUpdateEvent = async (event: Event) => {
     setEvents(prev => prev.map(e => e.id === event.id ? event : e));
     
-    // Explicitly set isActive to boolean
+    // Explicitly set isActive to boolean for Column F
     const isActiveVal = event.isActive !== undefined ? event.isActive : true;
     const rowData = [event.id, event.name, event.date, event.location, event.description || '-', isActiveVal];
     
@@ -606,7 +597,8 @@ const App: React.FC = () => {
                 )}
              </div>
              
-             {!systemSettings.isRegistrationOpen && !systemSettings.isScanningOpen && (
+             {/* Only show "System Closed" if explicit and we are sure */}
+             {!isLoading && !systemSettings.isRegistrationOpen && !systemSettings.isScanningOpen && (
                <div className="text-center p-8 bg-slate-100 rounded-3xl max-w-md mx-auto">
                  <Power className="w-12 h-12 text-slate-300 mx-auto mb-4" />
                  <h3 className="text-xl font-bold text-slate-600">ระบบปิดให้บริการชั่วคราว</h3>
