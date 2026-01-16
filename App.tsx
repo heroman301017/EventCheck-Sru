@@ -36,7 +36,7 @@ const THEME_PRESETS = [
   { name: 'Midnight', color: '#334155' },
 ];
 
-// Helper to safely parse boolean values from Google Sheets (which might be "TRUE", "FALSE", 1, 0, or undefined)
+// Helper to safely parse boolean values from Google Sheets
 const safeBool = (val: any, defaultVal: boolean) => {
   if (val === undefined || val === null || val === '') return defaultVal;
   if (typeof val === 'string') {
@@ -55,17 +55,33 @@ const App: React.FC = () => {
   
   const [users, setUsers] = useState<User[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
-  const [systemSettings, setSystemSettings] = useState<SystemSettings>({
-    isRegistrationOpen: true,
-    isScanningOpen: true,
-    allowPublicDashboard: true,
-    ownerCredit: 'Developed by EventCheck System',
-    themeColor: '#8b5cf6', // Default Violet
-    scannerBackground: ''
+  
+  // Initialize settings from LocalStorage first
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => {
+    try {
+      const saved = localStorage.getItem('systemSettings');
+      return saved ? JSON.parse(saved) : {
+        isRegistrationOpen: true,
+        isScanningOpen: true,
+        allowPublicDashboard: true,
+        ownerCredit: 'Developed by EventCheck System',
+        themeColor: '#8b5cf6',
+        scannerBackground: ''
+      };
+    } catch (e) {
+      return {
+        isRegistrationOpen: true,
+        isScanningOpen: true,
+        allowPublicDashboard: true,
+        ownerCredit: 'Developed by EventCheck System',
+        themeColor: '#8b5cf6',
+        scannerBackground: ''
+      };
+    }
   });
   
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false); // New state for saving indicator
+  const [isSaving, setIsSaving] = useState(false);
   const [hasRouted, setHasRouted] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [eventForRegistration, setEventForRegistration] = useState<Event | null>(null);
@@ -125,22 +141,25 @@ const App: React.FC = () => {
          }
       }
 
-      // Robustly set settings, defaulting to TRUE if keys are missing to prevent "System Closed" error
+      // Sync settings from server
       if (data.settings) {
-          setSystemSettings(prev => ({ 
-            ...prev, 
-            ...data.settings,
+          const serverSettings = { 
+            ...systemSettings, 
+            ...data.settings, // Merge everything from server
             isRegistrationOpen: safeBool(data.settings.isRegistrationOpen, true),
             isScanningOpen: safeBool(data.settings.isScanningOpen, true),
             allowPublicDashboard: safeBool(data.settings.allowPublicDashboard, true),
             themeColor: data.settings.themeColor || '#8b5cf6',
             scannerBackground: data.settings.scannerBackground || ''
-          }));
+          };
+          
+          setSystemSettings(serverSettings);
+          localStorage.setItem('systemSettings', JSON.stringify(serverSettings));
       }
 
       if (!hasRouted) {
-        const regOpen = data.settings ? safeBool(data.settings.isRegistrationOpen, true) : true;
-        const scanOpen = data.settings ? safeBool(data.settings.isScanningOpen, true) : true;
+        const regOpen = systemSettings.isRegistrationOpen;
+        const scanOpen = systemSettings.isScanningOpen;
 
         if (scanOpen) setActiveTab('scan');
         else if (regOpen) setActiveTab('register');
@@ -174,8 +193,6 @@ const App: React.FC = () => {
   // --- Dynamic Theme Injection ---
   useEffect(() => {
     const color = systemSettings.themeColor || '#8b5cf6';
-    
-    // Helper to convert hex to rgba
     const hexToRgba = (hex: string, alpha: number) => {
       let r = 0, g = 0, b = 0;
       if (hex.length === 4) {
@@ -198,7 +215,6 @@ const App: React.FC = () => {
       document.head.appendChild(styleTag);
     }
 
-    // We override specific Violet classes used in the app to the new selected color
     styleTag.innerHTML = `
       .bg-violet-600, .bg-violet-500, .hover\\:bg-violet-600:hover, .hover\\:bg-violet-500:hover { background-color: ${color} !important; }
       .text-violet-600, .text-violet-500, .text-violet-700, .hover\\:text-violet-600:hover, .hover\\:text-violet-500:hover { color: ${color} !important; }
@@ -206,7 +222,7 @@ const App: React.FC = () => {
       .shadow-violet-100, .shadow-violet-200 { --tw-shadow-color: ${hexToRgba(color, 0.3)} !important; }
       .bg-violet-100, .bg-violet-50, .hover\\:bg-violet-50:hover, .hover\\:bg-violet-100:hover { background-color: ${hexToRgba(color, 0.1)} !important; }
       .ring-violet-100 { --tw-ring-color: ${hexToRgba(color, 0.2)} !important; }
-      .to-fuchsia-500 { --tw-gradient-to: ${color} !important; } /* Simplify gradient for custom themes */
+      .to-fuchsia-500 { --tw-gradient-to: ${color} !important; }
     `;
   }, [systemSettings.themeColor]);
 
@@ -230,31 +246,49 @@ const App: React.FC = () => {
   const handleUpdateSettings = async (newSettings: SystemSettings) => {
     setIsSaving(true);
     setSystemSettings(newSettings);
-    // Debounce/Delay slightly to ensure UI updates first
+    localStorage.setItem('systemSettings', JSON.stringify(newSettings));
+
     try {
       await postAction({ action: "updateSettings", settings: newSettings });
     } catch(e) {
       console.error("Save failed", e);
     } finally {
-      setTimeout(() => setIsSaving(false), 500); // Visual feedback delay
+      setTimeout(() => setIsSaving(false), 500);
     }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Check file size (limit to 2MB for base64 safety in AppScript/Spreadsheet)
-      if (file.size > 2 * 1024 * 1024) {
-        alert("ขนาดไฟล์รูปภาพต้องไม่เกิน 2MB");
-        return;
-      }
-
       const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        // FIX: Create new object and immediately call API to save
-        const newSettings = { ...systemSettings, scannerBackground: base64String };
-        handleUpdateSettings(newSettings);
+      reader.onloadend = (event) => {
+        const img = new Image();
+        img.onload = () => {
+           // COMPRESS IMAGE using Canvas
+           const canvas = document.createElement('canvas');
+           const MAX_WIDTH = 600; // Resize to max 600px width
+           const scaleSize = MAX_WIDTH / img.width;
+           const newWidth = MAX_WIDTH;
+           const newHeight = img.height * scaleSize;
+           
+           canvas.width = newWidth;
+           canvas.height = newHeight;
+           const ctx = canvas.getContext('2d');
+           if(ctx) {
+              ctx.drawImage(img, 0, 0, newWidth, newHeight);
+              // Export as JPEG with 0.5 quality to reduce size
+              const base64String = canvas.toDataURL('image/jpeg', 0.5); 
+              
+              if(base64String.length > 49000) {
+                 alert("รูปภาพมีความละเอียดสูงเกินไปสำหรับ Google Sheets กรุณาใช้รูปภาพที่เล็กลง");
+                 return;
+              }
+
+              const newSettings = { ...systemSettings, scannerBackground: base64String };
+              handleUpdateSettings(newSettings);
+           }
+        }
+        img.src = event.target?.result as string;
       };
       reader.readAsDataURL(file);
     }
@@ -776,7 +810,7 @@ const App: React.FC = () => {
                                           <Trash className="w-3 h-3" /> ลบรูปภาพ
                                         </button>
                                       )}
-                                      <p className="text-[10px] text-slate-400">รองรับไฟล์ภาพขนาดไม่เกิน 2MB (jpg, png)</p>
+                                      <p className="text-[10px] text-slate-400">รองรับไฟล์ภาพขนาดไม่เกิน 2MB (ระบบจะทำการย่อขนาดอัตโนมัติ)</p>
                                   </div>
                               </div>
                           </div>
